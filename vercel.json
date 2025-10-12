@@ -2,20 +2,6 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
   "framework": "nextjs",
-  "env": {
-    "NEXTAUTH_SECRET": {
-      "description": "Secret for NextAuth.js authentication. Generate using: openssl rand -base64 32 (Linux/Mac) or [Convert]::ToBase64String((1..32|%{Get-Random -Min 0 -Max 256})) (Windows PowerShell)",
-      "required": true
-    },
-    "NEXT_PUBLIC_CONVEX_URL": {
-      "description": "Production Convex deployment URL from: npx convex deploy",
-      "required": true
-    },
-    "CONVEX_DEPLOY_KEY": {
-      "description": "Optional: Convex deploy key for automated deployments (get from Convex dashboard)",
-      "required": false
-    }
-  },
   "regions": ["syd1"],
   "headers": [
     {

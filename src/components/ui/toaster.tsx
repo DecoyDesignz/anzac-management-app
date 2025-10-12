@@ -14,7 +14,7 @@ import { CheckCircle2, AlertCircle, Info, AlertTriangle, Bell } from "lucide-rea
 export function Toaster() {
   const { toasts } = useToast()
 
-  const getIcon = (variant?: string) => {
+  const getIcon = (variant?: string | null) => {
     switch (variant) {
       case "success":
         return <CheckCircle2 className="w-5 h-5 text-primary" />
