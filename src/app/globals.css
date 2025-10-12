@@ -1,26 +1,759 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+@custom-variant dark (&:is(.dark *));
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+@layer base {
+  body {
+    letter-spacing: var(--tracking-normal);
   }
 }
 
-body {
-  background: var(--background);
+@theme inline {
+  --font-sans: Montserrat, sans-serif;
+  --font-mono: Fira Code, monospace;
+  --font-serif: Merriweather, serif;
+  --radius: 0.3rem;
+  --tracking-tighter: calc(var(--tracking-normal) - 0.05em);
+  --tracking-tight: calc(var(--tracking-normal) - 0.025em);
+  --tracking-wide: calc(var(--tracking-normal) + 0.025em);
+  --tracking-wider: calc(var(--tracking-normal) + 0.05em);
+  --tracking-widest: calc(var(--tracking-normal) + 0.1em);
+  --tracking-normal: var(--tracking-normal);
+  --shadow-2xl: var(--shadow-2xl);
+  --shadow-xl: var(--shadow-xl);
+  --shadow-lg: var(--shadow-lg);
+  --shadow-md: var(--shadow-md);
+  --shadow: var(--shadow);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-xs: var(--shadow-xs);
+  --shadow-2xs: var(--shadow-2xs);
+  --spacing: var(--spacing);
+  --letter-spacing: var(--letter-spacing);
+  --shadow-offset-y: var(--shadow-offset-y);
+  --shadow-offset-x: var(--shadow-offset-x);
+  --shadow-spread: var(--shadow-spread);
+  --shadow-blur: var(--shadow-blur);
+  --shadow-opacity: var(--shadow-opacity);
+  --color-shadow-color: var(--shadow-color);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
+  --color-background: var(--background);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-montserrat), Arial, Helvetica, sans-serif;
+  }
+}
+
+:root {
+  /* 70% - Neutral Foundation (Backgrounds, surfaces, text) */
+  --background: oklch(0.98 0.005 85);
+  --foreground: oklch(0.25 0.015 85);
+  --card: oklch(0.99 0.003 85);
+  --card-foreground: oklch(0.25 0.015 85);
+  --popover: oklch(0.99 0.003 85);
+  --popover-foreground: oklch(0.25 0.015 85);
+  
+  /* 30% - Secondary Supporting (Borders, subtle backgrounds, hover states) */
+  --secondary: oklch(0.95 0.01 85);
+  --secondary-foreground: oklch(0.40 0.01 85);
+  --muted: oklch(0.96 0.008 85);
+  --muted-foreground: oklch(0.50 0.01 85);
+  --border: oklch(0.90 0.015 85);
+  --input: oklch(0.95 0.01 85);
+  
+  /* 10% - Military Blue/Teal Accent (CTAs, highlights, active states) - SOLID COLORS ONLY */
+  --primary: oklch(0.60 0.15 220);
+  --primary-foreground: oklch(1.0 0 0);
+  --accent: oklch(0.65 0.12 200);
+  --accent-foreground: oklch(1.0 0 0);
+  --ring: oklch(0.60 0.15 220);
+  
+  /* Accent colors for info elements - compatible with light theme */
+  --military-blue: oklch(0.55 0.15 240);
+  --military-blue-foreground: oklch(1.0 0 0);
+  --military-cyan: oklch(0.60 0.12 200);
+  --military-cyan-foreground: oklch(1.0 0 0);
+  
+  /* Utility colors */
+  --destructive: oklch(0.55 0.22 25);
+  --destructive-foreground: oklch(1.0 0 0);
+  
+  /* Chart colors - military blue and teal variations */
+  --chart-1: oklch(0.60 0.15 220);
+  --chart-2: oklch(0.65 0.12 200);
+  --chart-3: oklch(0.55 0.15 240);
+  --chart-4: oklch(0.70 0.10 180);
+  --chart-5: oklch(0.65 0.15 220);
+  
+  /* Sidebar - neutral background with military blue accents */
+  --sidebar: oklch(0.97 0.008 85);
+  --sidebar-foreground: oklch(0.25 0.015 85);
+  --sidebar-primary: oklch(0.60 0.15 220);
+  --sidebar-primary-foreground: oklch(1.0 0 0);
+  --sidebar-accent: oklch(0.95 0.01 85);
+  --sidebar-accent-foreground: oklch(0.40 0.01 85);
+  --sidebar-border: oklch(0.90 0.015 85);
+  --sidebar-ring: oklch(0.60 0.15 220);
+  --font-sans: Montserrat, sans-serif;
+  --font-serif: Merriweather, serif;
+  --font-mono: Fira Code, monospace;
+  --radius: 0.3rem;
+  --shadow-x: 0px;
+  --shadow-y: 2px;
+  --shadow-blur: 3px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.18;
+  --shadow-color: hsl(220 60% 30%);
+  --shadow-2xs: 0px 2px 3px 0px hsl(220 60% 30% / 0.09);
+  --shadow-xs: 0px 2px 3px 0px hsl(220 60% 30% / 0.09);
+  --shadow-sm: 0px 2px 3px 0px hsl(220 60% 30% / 0.15), 0px 1px 2px -1px hsl(220 60% 30% / 0.15);
+  --shadow: 0px 2px 3px 0px hsl(220 60% 30% / 0.15), 0px 1px 2px -1px hsl(220 60% 30% / 0.15);
+  --shadow-md: 0px 2px 3px 0px hsl(220 60% 30% / 0.15), 0px 2px 4px -1px hsl(220 60% 30% / 0.15);
+  --shadow-lg: 0px 2px 3px 0px hsl(220 60% 30% / 0.15), 0px 4px 6px -1px hsl(220 60% 30% / 0.15);
+  --shadow-xl: 0px 2px 3px 0px hsl(220 60% 30% / 0.15), 0px 8px 10px -1px hsl(220 60% 30% / 0.15);
+  --shadow-2xl: 0px 2px 3px 0px hsl(220 60% 30% / 0.35);
+  --tracking-normal: 0em;
+  --spacing: 0.25rem;
+}
+
+.dark {
+  /* 70% - Neutral Foundation (Dark backgrounds, surfaces, text) */
+  --background: oklch(0.18 0.01 85);
+  --foreground: oklch(0.95 0.005 85);
+  --card: oklch(0.22 0.01 85);
+  --card-foreground: oklch(0.95 0.005 85);
+  --popover: oklch(0.22 0.01 85);
+  --popover-foreground: oklch(0.95 0.005 85);
+  
+  /* 30% - Secondary Supporting (Borders, subtle backgrounds, hover states) */
+  --secondary: oklch(0.28 0.01 85);
+  --secondary-foreground: oklch(0.85 0.005 85);
+  --muted: oklch(0.25 0.01 85);
+  --muted-foreground: oklch(0.65 0.01 85);
+  --border: oklch(0.35 0.015 85);
+  --input: oklch(0.28 0.01 85);
+  
+  /* 10% - Orange Accent (CTAs, highlights, active states) - SOLID COLORS ONLY */
+  --primary: oklch(0.70 0.19 45);
+  --primary-foreground: oklch(0.1 0 0);
+  --accent: oklch(0.75 0.17 45);
+  --accent-foreground: oklch(0.1 0 0);
+  --ring: oklch(0.70 0.19 45);
+  
+  /* Accent colors for info elements - compatible with dark theme */
+  --military-blue: oklch(0.65 0.15 240);
+  --military-blue-foreground: oklch(0.05 0 0);
+  --military-cyan: oklch(0.70 0.12 200);
+  --military-cyan-foreground: oklch(0.05 0 0);
+  
+  /* Utility colors */
+  --destructive: oklch(0.60 0.23 25);
+  --destructive-foreground: oklch(1.0 0 0);
+  
+  /* Chart colors - use primary orange and neutral variations */
+  --chart-1: oklch(0.70 0.19 45);
+  --chart-2: oklch(0.65 0.01 85);
+  --chart-3: oklch(0.65 0.16 50);
+  --chart-4: oklch(0.60 0.01 85);
+  --chart-5: oklch(0.75 0.17 45);
+  
+  /* Sidebar - neutral background */
+  --sidebar: oklch(0.20 0.01 85);
+  --sidebar-foreground: oklch(0.95 0.005 85);
+  --sidebar-primary: oklch(0.70 0.19 45);
+  --sidebar-primary-foreground: oklch(0.1 0 0);
+  --sidebar-accent: oklch(0.28 0.01 85);
+  --sidebar-accent-foreground: oklch(0.85 0.005 85);
+  --sidebar-border: oklch(0.35 0.015 85);
+  --sidebar-ring: oklch(0.70 0.19 45);
+  --font-sans: Montserrat, sans-serif;
+  --font-serif: Merriweather, serif;
+  --font-mono: Fira Code, monospace;
+  --radius: 0.3rem;
+  --shadow-x: 0px;
+  --shadow-y: 2px;
+  --shadow-blur: 3px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.18;
+  --shadow-color: hsl(0 0% 5%);
+  --shadow-2xs: 0px 2px 3px 0px hsl(0 0% 5% / 0.09);
+  --shadow-xs: 0px 2px 3px 0px hsl(0 0% 5% / 0.09);
+  --shadow-sm: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 1px 2px -1px hsl(0 0% 5% / 0.18);
+  --shadow: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 1px 2px -1px hsl(0 0% 5% / 0.18);
+  --shadow-md: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 2px 4px -1px hsl(0 0% 5% / 0.18);
+  --shadow-lg: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 4px 6px -1px hsl(0 0% 5% / 0.18);
+  --shadow-xl: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 8px 10px -1px hsl(0 0% 5% / 0.18);
+  --shadow-2xl: 0px 2px 3px 0px hsl(0 0% 5% / 0.45);
+}
+
+/* Military Theme - Dark Charcoal with Orange/Blue Accents */
+.military {
+  /* 70% - Dark Gray Foundation (Backgrounds, surfaces, text) */
+  --background: oklch(0.12 0.005 85);
+  --foreground: oklch(0.95 0.005 85);
+  --card: oklch(0.18 0.008 85);
+  --card-foreground: oklch(0.95 0.005 85);
+  --popover: oklch(0.18 0.008 85);
+  --popover-foreground: oklch(0.95 0.005 85);
+  
+  /* 30% - Secondary Supporting (Borders, subtle backgrounds, hover states) */
+  --secondary: oklch(0.22 0.01 85);
+  --secondary-foreground: oklch(0.85 0.005 85);
+  --muted: oklch(0.20 0.008 85);
+  --muted-foreground: oklch(0.65 0.01 85);
+  --border: oklch(0.30 0.015 85);
+  --input: oklch(0.22 0.01 85);
+  
+  /* 10% - Military Blue/Teal Accent (CTAs, highlights, active states) - SOLID COLORS ONLY */
+  --primary: oklch(0.70 0.15 220);
+  --primary-foreground: oklch(0.05 0 0);
+  --accent: oklch(0.75 0.12 200);
+  --accent-foreground: oklch(0.05 0 0);
+  --ring: oklch(0.70 0.15 220);
+  
+  /* Military Blue/Teal Accents - For secondary highlights and info elements */
+  --military-blue: oklch(0.65 0.18 220);
+  --military-blue-foreground: oklch(0.05 0 0);
+  --military-cyan: oklch(0.75 0.12 200);
+  --military-cyan-foreground: oklch(0.05 0 0);
+  
+  /* Utility colors */
+  --destructive: oklch(0.60 0.23 25);
+  --destructive-foreground: oklch(1.0 0 0);
+  
+  /* Chart colors - military blue and teal accents */
+  --chart-1: oklch(0.70 0.15 220);  /* Military blue */
+  --chart-2: oklch(0.75 0.12 200);  /* Teal */
+  --chart-3: oklch(0.65 0.18 220);  /* Darker blue */
+  --chart-4: oklch(0.80 0.10 180);  /* Light cyan */
+  --chart-5: oklch(0.75 0.15 220);  /* Bright blue */
+  
+  /* Sidebar - dark gray background */
+  --sidebar: oklch(0.14 0.008 85);
+  --sidebar-foreground: oklch(0.95 0.005 85);
+  --sidebar-primary: oklch(0.70 0.15 220);
+  --sidebar-primary-foreground: oklch(0.05 0 0);
+  --sidebar-accent: oklch(0.22 0.01 85);
+  --sidebar-accent-foreground: oklch(0.85 0.005 85);
+  --sidebar-border: oklch(0.30 0.015 85);
+  --sidebar-ring: oklch(0.70 0.15 220);
+  
+  /* Military-themed shadows with blue tints */
+  --shadow-color: hsl(220 60% 15%);
+  --shadow-2xs: 0px 2px 3px 0px hsl(220 60% 15% / 0.15);
+  --shadow-xs: 0px 2px 3px 0px hsl(220 60% 15% / 0.15);
+  --shadow-sm: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 1px 2px -1px hsl(220 60% 15% / 0.25);
+  --shadow: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 1px 2px -1px hsl(220 60% 15% / 0.25);
+  --shadow-md: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 2px 4px -1px hsl(220 60% 15% / 0.25);
+  --shadow-lg: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 4px 6px -1px hsl(220 60% 15% / 0.25);
+  --shadow-xl: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 8px 10px -1px hsl(220 60% 15% / 0.25);
+  --shadow-2xl: 0px 2px 3px 0px hsl(220 60% 15% / 0.4);
+}
+
+/* Military theme glow effects */
+.military .glow-blue {
+  box-shadow: 0 0 20px oklch(0.70 0.15 220 / 0.3),
+              0 0 40px oklch(0.70 0.15 220 / 0.15),
+              0 0 60px oklch(0.70 0.15 220 / 0.08);
+}
+
+/* Military theme custom scrollbar */
+.military ::-webkit-scrollbar-track {
+  background: oklch(0.20 0.008 85 / 0.3);
+}
+
+.military ::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, 
+    oklch(0.70 0.15 220 / 0.6), 
+    oklch(0.75 0.12 200 / 0.6));
+  border: 2px solid oklch(0.12 0.008 85 / 0.3);
+}
+
+.military ::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, 
+    oklch(0.70 0.15 220 / 0.8), 
+    oklch(0.75 0.12 200 / 0.8));
+}
+
+/* Military theme shimmer effect */
+.military .animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    oklch(0.18 0.008 85 / 0.3) 0%,
+    oklch(0.22 0.01 85 / 0.5) 50%,
+    oklch(0.18 0.008 85 / 0.3) 100%
+  );
+  background-size: 200% 100%;
+}
+
+/* Blue accent utilities - work in all themes */
+.text-military-blue {
+  color: var(--military-blue);
+}
+
+.text-military-cyan {
+  color: var(--military-cyan);
+}
+
+.bg-military-blue {
+  background-color: var(--military-blue);
+}
+
+.bg-military-cyan {
+  background-color: var(--military-cyan);
+}
+
+.border-military-blue {
+  border-color: var(--military-blue);
+}
+
+.border-military-cyan {
+  border-color: var(--military-cyan);
+}
+
+.hover\:text-military-blue:hover {
+  color: var(--military-blue);
+}
+
+.hover\:bg-military-blue:hover {
+  background-color: var(--military-blue);
+}
+
+.hover\:border-military-blue:hover {
+  border-color: var(--military-blue);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* Minimal Glassmorphism - Part of 30% Supporting Elements */
+@layer utilities {
+  /* Very subtle glass effect - use sparingly */
+  .glass {
+    background: var(--card);
+    border: 1px solid var(--border);
+  }
+  
+  .glass-strong {
+    background: var(--card);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+    border: 1px solid var(--border);
+  }
+  
+  .glass-subtle {
+    background: var(--secondary);
+    border: 1px solid var(--border);
+  }
+  
+  /* Minimal background mesh - barely visible */
+  .gradient-mesh {
+    background: 
+      radial-gradient(at 0% 0%, var(--primary) / 0.02, transparent 50%),
+      radial-gradient(at 100% 100%, var(--primary) / 0.01, transparent 50%);
+  }
+  
+  /* Only use glow on active/hover states (10% accent) */
+  .glow-orange {
+    box-shadow: 0 0 20px var(--primary) / 0.15,
+                0 0 40px var(--primary) / 0.08;
+  }
+  
+  .animate-gradient {
+    background-size: 200% 200%;
+    animation: gradient 8s ease infinite;
+  }
+  
+  @keyframes gradient {
+    0%, 100% { background-position: 0% 50%; }
+    50% { background-position: 100% 50%; }
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+  
+  @keyframes float {
+    0%, 100% { transform: translateY(0px); }
+    50% { transform: translateY(-10px); }
+  }
+  
+  .animate-glow {
+    animation: glow 3s ease-in-out infinite;
+  }
+  
+  @keyframes glow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+  
+  .transition-smooth {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  
+  .transition-spring {
+    transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Removed inset-shadow and content-card utility classes - these are now handled with inline styles for better light mode compatibility */
+
+  /* Loading animations */
+  .animate-fade-in {
+    animation: fadeIn 0.6s ease-out forwards;
+  }
+  
+  .animate-fade-in-up {
+    animation: fadeInUp 0.6s ease-out forwards;
+  }
+  
+  .animate-fade-in-down {
+    animation: fadeInDown 0.6s ease-out forwards;
+  }
+  
+  .animate-scale-in {
+    animation: scaleIn 0.4s ease-out forwards;
+  }
+  
+  .animate-slide-in-right {
+    animation: slideInRight 0.5s ease-out forwards;
+  }
+  
+  .animate-slide-in-left {
+    animation: slideInLeft 0.5s ease-out forwards;
+  }
+
+  /* Stagger animation delays */
+  .animate-delay-100 {
+    animation-delay: 0.1s;
+  }
+  
+  .animate-delay-200 {
+    animation-delay: 0.2s;
+  }
+  
+  .animate-delay-300 {
+    animation-delay: 0.3s;
+  }
+  
+  .animate-delay-400 {
+    animation-delay: 0.4s;
+  }
+  
+  .animate-delay-500 {
+    animation-delay: 0.5s;
+  }
+
+  /* Shimmer effect for loading */
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      oklch(0.9363 0.0218 83.2637 / 0.3) 0%,
+      oklch(0.9363 0.0218 83.2637 / 0.5) 50%,
+      oklch(0.9363 0.0218 83.2637 / 0.3) 100%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
+  }
+
+  .dark .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      oklch(0.2330 0.0073 67.4563 / 0.3) 0%,
+      oklch(0.2330 0.0073 67.4563 / 0.5) 50%,
+      oklch(0.2330 0.0073 67.4563 / 0.3) 100%
+    );
+    background-size: 200% 100%;
+  }
+  
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes fadeInDown {
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  
+  @keyframes scaleIn {
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+  
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(-20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+  
+  @keyframes slideInLeft {
+    from {
+      opacity: 0;
+      transform: translateX(20px);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes shimmer {
+    0% {
+      background-position: -200% 0;
+    }
+    100% {
+      background-position: 200% 0;
+    }
+  }
+
+  /* Popover animations */
+  @keyframes slideInFromBottom {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes slideOutToBottom {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+  }
+
+  [data-state="open"][data-side="top"] {
+    animation: slideInFromBottom 0.2s ease-out;
+  }
+
+  [data-state="closed"][data-side="top"] {
+    animation: slideOutToBottom 0.15s ease-in;
+  }
+
+  /* Toast animations */
+  @keyframes toastSlideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-100%) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  @keyframes toastSlideOut {
+    from {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+    to {
+      opacity: 0;
+      transform: translateX(100%) scale(0.95);
+    }
+  }
+
+  /* Apply animations based on Radix state */
+  .toast-animate[data-state="open"] {
+    animation: toastSlideIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .toast-animate[data-state="closed"] {
+    animation: toastSlideOut 0.3s ease-in;
+  }
+
+  .toast-animate[data-swipe="move"] {
+    transition: transform 0.2s ease-out;
+  }
+
+  .toast-animate[data-swipe="cancel"] {
+    transform: translateX(0);
+    transition: transform 0.2s ease-out;
+  }
+
+  .toast-animate[data-swipe="end"] {
+    animation: toastSlideOut 0.2s ease-out;
+  }
+
+  /* Pulse animation for important toasts */
+  @keyframes pulse-ring {
+    0% {
+      box-shadow: 0 0 0 0 var(--primary);
+    }
+    70% {
+      box-shadow: 0 0 0 6px transparent;
+    }
+    100% {
+      box-shadow: 0 0 0 0 transparent;
+    }
+  }
+
+  .animate-pulse-ring {
+    animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+}
+
+/* Custom Scrollbar */
+@layer utilities {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    background: oklch(0.9363 0.0218 83.2637 / 0.3);
+    border-radius: 4px;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, 
+      oklch(0.60 0.15 220 / 0.5), 
+      oklch(0.65 0.12 200 / 0.5));
+    border-radius: 4px;
+    border: 2px solid oklch(0.9686 0.0091 78.2818 / 0.3);
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, 
+      oklch(0.60 0.15 220 / 0.7), 
+      oklch(0.65 0.12 200 / 0.7));
+  }
+
+  /* Dark mode scrollbar */
+  .dark ::-webkit-scrollbar-track {
+    background: oklch(0.2330 0.0073 67.4563 / 0.3);
+  }
+  
+  .dark ::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, 
+      oklch(0.7049 0.1867 47.6044 / 0.5), 
+      oklch(0.7952 0.1617 86.0468 / 0.5));
+    border: 2px solid oklch(0.2685 0.0063 34.2976 / 0.3);
+  }
+  
+  .dark ::-webkit-scrollbar-thumb:hover {
+    background: linear-gradient(180deg, 
+      oklch(0.7049 0.1867 47.6044 / 0.7), 
+      oklch(0.7952 0.1617 86.0468 / 0.7));
+  }
+}
+
+/* Date picker styling */
+input[type="date"] {
+  color-scheme: dark;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+}
+
+input[type="date"]::-webkit-datetime-edit-text {
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+}
+
+input[type="date"]::-webkit-datetime-edit-month-field,
+input[type="date"]::-webkit-datetime-edit-day-field,
+input[type="date"]::-webkit-datetime-edit-year-field {
+  color: var(--foreground);
+}
+
+/* Ensure disabled dates are grayed out */
+input[type="date"]:invalid {
+  border-color: var(--destructive);
+}
+
+/* Smooth transitions for reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }
