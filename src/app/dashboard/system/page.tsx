@@ -2022,7 +2022,7 @@ export default function SystemManagementPage() {
         description="This will remove all instructor assignments. Cannot delete if qualifications are assigned."
         actionText="Delete"
         onConfirm={() => {
-          if (deleteQualId) handleDeleteQualification(deleteQualId)
+          if (deleteSchoolId) handleDeleteSchool(deleteSchoolId)
         }}
       />
 
@@ -2033,7 +2033,7 @@ export default function SystemManagementPage() {
         description="This action cannot be undone. This will permanently delete the user account and remove all associated data including roles and instructor assignments."
         actionText="Delete"
         onConfirm={() => {
-          if (deleteQualId) handleDeleteQualification(deleteQualId)
+          if (deleteUserId) handleDeleteUser(deleteUserId)
         }}
       />
     </div>

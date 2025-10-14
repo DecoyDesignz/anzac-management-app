@@ -60,7 +60,10 @@ export function EventCard({ event, onClick, size = 'md' }: EventCardProps) {
   return (
     <div 
       className={`${cardPadding} rounded-lg border-2 ${borderColor} glass cursor-pointer transition-all duration-200 hover:shadow-lg hover:scale-[1.02] ${spaceY}`}
-      onClick={onClick}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
     >
       {/* Title and Booking Code */}
       <div className="flex items-start justify-between gap-2 sm:gap-3">
