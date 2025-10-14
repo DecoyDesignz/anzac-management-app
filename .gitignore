@@ -8,7 +8,7 @@
 
 # testing
 /coverage
-/scripts
+/scripts/
 
 # next.js
 /.next/
@@ -46,3 +46,5 @@ next-env.d.ts
 *~
 
 .vercel
+
+.IDEAS.md
