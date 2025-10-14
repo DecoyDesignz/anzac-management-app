@@ -714,8 +714,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
                           {/* Primary Event Card */}
                           <EventCard 
                             event={primaryEvent}
-                            onClick={(e) => {
-                              e?.stopPropagation?.()
+                            onClick={() => {
                               setSelectedEvent(primaryEvent)
                               setEditModalOpen(true)
                             }}
@@ -742,8 +741,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
                                 <EventCard
                                   key={event._id}
                                   event={event}
-                                  onClick={(e) => {
-                                    e?.stopPropagation?.()
+                                  onClick={() => {
                                     setSelectedEvent(event)
                                     setEditModalOpen(true)
                                   }}
@@ -753,8 +751,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
                                 variant="ghost"
                                 size="sm"
                                 className="w-full h-7 sm:h-8 text-xs"
-                                onClick={(e) => {
-                                  e.stopPropagation()
+                                onClick={() => {
                                   toggleGroupExpansion(dayIndex, groupIndex)
                                 }}
                               >

@@ -37,7 +37,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             email: result.user.email || result.user.callSign, // Use callSign as email fallback for compatibility
             name: result.user.callSign || result.user.name, // Use callSign as name
             role: result.user.role || "member",
-            requirePasswordChange: result.user.requirePasswordChange,
+            requirePasswordChange: result.user.requirePasswordChange ?? false,
           }
         } catch (error: unknown) {
           console.error("Auth error:", error)
