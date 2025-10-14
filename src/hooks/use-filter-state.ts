@@ -6,7 +6,7 @@ interface FilterState {
   searchTerm: string
   sortBy: string
   sortOrder: SortOrder
-  [key: string]: any
+  [key: string]: unknown
 }
 
 export function useFilterState<T extends FilterState>(initialState: T) {

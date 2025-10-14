@@ -6,7 +6,6 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
   const userRole = req.auth?.user?.role
 
-  const isPublicRoute = nextUrl.pathname === "/login" || nextUrl.pathname === "/"
   const isProtectedRoute = nextUrl.pathname.startsWith("/dashboard") || nextUrl.pathname === "/change-password"
 
   // Redirect to dashboard if logged in and trying to access login

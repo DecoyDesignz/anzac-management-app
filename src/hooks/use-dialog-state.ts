@@ -1,6 +1,6 @@
 import { useState, useCallback } from "react"
 
-export function useDialogState<T = any>() {
+export function useDialogState<T = unknown>() {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedItem, setSelectedItem] = useState<T | null>(null)
 
