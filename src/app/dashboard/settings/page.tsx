@@ -27,6 +27,7 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { User, Lock, Shield, AlertTriangle, CheckCircle } from "lucide-react"
+import { LoadingState } from "@/components/common/loading-state"
 
 const passwordFormSchema = z.object({
   currentPassword: z.string().min(1, {
@@ -104,13 +105,7 @@ export default function SettingsPage() {
   }
 
   if (status === "loading") {
-    return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-pulse text-muted-foreground">Loading...</div>
-        </div>
-      </div>
-    )
+    return <LoadingState message="Loading settings..." />
   }
 
   if (!session?.user) {
@@ -136,8 +131,6 @@ export default function SettingsPage() {
         <p className="text-muted-foreground text-lg">
           Manage your account settings and preferences
         </p>
-        {/* Decorative accent bar */}
-        <div className="absolute -bottom-2 left-0 w-24 h-0.5 bg-primary rounded-full"></div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">

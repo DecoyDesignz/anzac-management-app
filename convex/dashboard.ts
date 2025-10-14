@@ -26,15 +26,20 @@ export const getStatistics = query({
     const schools = await ctx.db.query("schools").collect();
     const totalSchools = schools.length;
 
-    // Count users by role
-    const users = await ctx.db.query("systemUsers").collect();
+    // Count users by role (personnel with system access)
+    const personnelWithAccess = allPersonnel.filter(p => p.passwordHash !== undefined);
     const userRoles = await ctx.db.query("userRoles").collect();
+    const roles = await ctx.db.query("roles").collect();
+    
+    // Create a map of role IDs to role names
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
     
     const usersByRole = {
-      super_admin: userRoles.filter((ur) => ur.role === "super_admin").length,
-      administrator: userRoles.filter((ur) => ur.role === "administrator").length,
-      game_master: userRoles.filter((ur) => ur.role === "game_master").length,
-      instructor: userRoles.filter((ur) => ur.role === "instructor").length,
+      super_admin: userRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "super_admin").length,
+      administrator: userRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "administrator").length,
+      game_master: userRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "game_master").length,
+      instructor: userRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "instructor").length,
+      member: userRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "member").length,
     };
 
     return {
@@ -44,7 +49,7 @@ export const getStatistics = query({
       totalRanks,
       totalQualifications,
       totalSchools,
-      totalUsers: users.length,
+      totalUsers: personnelWithAccess.length,
       usersByRole,
     };
   },
@@ -76,13 +81,21 @@ export const getDashboardOverview = query({
       ? (totalQualificationsAwarded / activePersonnel).toFixed(1) 
       : "0";
 
-    // Get top qualifications by personnel count
+    // Get top qualifications by personnel count with school colors
+    const schools = await ctx.db.query("schools").collect();
+    const schoolMap = new Map(schools.map(school => [school._id, school]));
+    
     const qualificationCounts = qualifications.map((qual) => {
       const count = personnelQualifications.filter(
         (pq) => pq.qualificationId === qual._id
       ).length;
+      const school = schoolMap.get(qual.schoolId);
       return {
         qualification: qual,
+        school: {
+          name: school?.name || "Unknown",
+          color: school?.color || "#6B7280"
+        },
         count,
         percentage: activePersonnel > 0 ? Math.round((count / activePersonnel) * 100) : 0,
       };
@@ -127,8 +140,9 @@ export const getDashboardOverview = query({
 
         const instructorsWithDetails = await Promise.all(
           eventInstructors.map(async (ei) => {
-            const user = await ctx.db.get(ei.userId);
-            return user?.name || "Unknown";
+            if (!ei.personnelId) return "Unknown";
+            const person = await ctx.db.get(ei.personnelId);
+            return person?.callSign || "Unknown";
           })
         );
         
@@ -155,9 +169,9 @@ export const getDashboardOverview = query({
       : null;
 
     // Get schools data
-    const schools = await ctx.db.query("schools").collect();
+    const allSchools = await ctx.db.query("schools").collect();
     const schoolStats = await Promise.all(
-      schools.map(async (school) => {
+      allSchools.map(async (school) => {
         const schoolQualifications = qualifications.filter((q) => q.schoolId === school._id);
         const instructors = await ctx.db
           .query("instructorSchools")
@@ -173,13 +187,19 @@ export const getDashboardOverview = query({
       })
     );
 
-    // Get system users count
-    const systemUsers = await ctx.db.query("systemUsers").collect();
+    // Get system users count (personnel with system access)
+    const allPersonnelForCount = await ctx.db.query("personnel").collect();
+    const systemUsers = allPersonnelForCount.filter(p => p.passwordHash !== undefined);
     const allUserRoles = await ctx.db.query("userRoles").collect();
-    const instructorCount = allUserRoles.filter((ur) => ur.role === "instructor").length;
-    const gameMasterCount = allUserRoles.filter((ur) => ur.role === "game_master").length;
+    const allRoles = await ctx.db.query("roles").collect();
+    
+    // Create a map of role IDs to role names
+    const roleMap = new Map(allRoles.map(role => [role._id, role.roleName]));
+    
+    const instructorCount = allUserRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "instructor").length;
+    const gameMasterCount = allUserRoles.filter((ur) => ur.roleId && roleMap.get(ur.roleId) === "game_master").length;
 
-    // Get recent promotions (last 3)
+    // Get recent promotions (last 3) with roles
     const allRankHistory = await ctx.db.query("rankHistory").collect();
     const sortedRankHistory = allRankHistory.sort((a, b) => b.promotionDate - a.promotionDate);
     const recentPromotions = await Promise.all(
@@ -188,13 +208,39 @@ export const getDashboardOverview = query({
         const rank = await ctx.db.get(history.rankId);
         const promotedBy = history.promotedBy ? await ctx.db.get(history.promotedBy) : null;
         
+        // Get person's roles if they have system access
+        let roles: Array<{ name: string; displayName: string; color: string }> = [];
+        if (person && person.passwordHash) {
+          const personnelRoles = await ctx.db
+            .query("userRoles")
+            .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
+            .collect();
+          
+          const roleDetails = personnelRoles
+            .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+            .filter(Boolean)
+            .map(roleName => {
+              const role = allRoles.find(r => r.roleName === roleName);
+              return role ? {
+                name: role.roleName,
+                displayName: role.displayName,
+                color: role.color
+              } : null;
+            })
+            .filter(Boolean) as Array<{ name: string; displayName: string; color: string }>;
+          
+          roles = roleDetails;
+        }
+        
         return {
           personnelName: person?.callSign || "Unknown",
           rankName: rank?.name || "Unknown",
           rankAbbreviation: rank?.abbreviation || "N/A",
           promotionDate: history.promotionDate,
-          promotedByName: promotedBy?.name || "System",
+          promotedByName: promotedBy?.callSign || "System",
           notes: history.notes,
+          roles,
+          hasSystemAccess: person?.passwordHash !== undefined,
         };
       })
     );
@@ -223,8 +269,9 @@ export const getDashboardOverview = query({
 
         const instructorsWithDetails = await Promise.all(
           eventInstructors.map(async (ei) => {
-            const user = await ctx.db.get(ei.userId);
-            return user?.name || "Unknown";
+            if (!ei.personnelId) return "Unknown";
+            const person = await ctx.db.get(ei.personnelId);
+            return person?.callSign || "Unknown";
           })
         );
         

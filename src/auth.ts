@@ -34,9 +34,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           // Return user object
           return {
             id: result.user._id,
-            email: result.user.email || result.user.name, // Use username as email fallback for compatibility
-            name: result.user.name,
-            role: result.user.role || "game_master",
+            email: result.user.email || result.user.callSign, // Use callSign as email fallback for compatibility
+            name: result.user.callSign || result.user.name, // Use callSign as name
+            role: result.user.role || "member",
             requirePasswordChange: result.user.requirePasswordChange,
           }
         } catch (error: unknown) {

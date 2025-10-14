@@ -30,6 +30,7 @@ import { Search, Filter, X, ChevronDown } from "lucide-react"
 
 export type FilterMode = "callsign" | "rank" | "qualification"
 export type SortOrder = "asc" | "desc"
+export type SystemRole = "game_master" | "instructor" | "administrator"
 
 interface SearchFilterBarProps {
   searchTerm: string
@@ -40,6 +41,8 @@ interface SearchFilterBarProps {
   onRanksChange: (ranks: string[]) => void
   selectedSchools?: string[]
   onSchoolsChange?: (schools: string[]) => void
+  selectedRoles?: SystemRole[]
+  onRolesChange?: (roles: SystemRole[]) => void
   sortBy: string
   onSortByChange: (sort: string) => void
   sortOrder: SortOrder
@@ -56,6 +59,8 @@ export function SearchFilterBar({
   onRanksChange,
   selectedSchools = [],
   onSchoolsChange,
+  selectedRoles = [],
+  onRolesChange,
   sortBy,
   onSortByChange,
   sortOrder,
@@ -64,6 +69,7 @@ export function SearchFilterBar({
 }: SearchFilterBarProps) {
   const [rankFilterOpen, setRankFilterOpen] = useState(false)
   const [schoolFilterOpen, setSchoolFilterOpen] = useState(false)
+  const [roleFilterOpen, setRoleFilterOpen] = useState(false)
 
   // Fetch data for filters
   const ranks = useQuery(api.ranks.listRanks, {})
@@ -71,7 +77,7 @@ export function SearchFilterBar({
   const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
 
   // Count active filters
-  const activeFiltersCount = selectedRanks.length + (selectedSchools?.length || 0)
+  const activeFiltersCount = selectedRanks.length + (selectedSchools?.length || 0) + (selectedRoles?.length || 0)
 
   const handleRankToggle = (rankId: string) => {
     if (selectedRanks.includes(rankId)) {
@@ -88,6 +94,21 @@ export function SearchFilterBar({
     } else {
       onSchoolsChange([...selectedSchools, schoolId])
     }
+  }
+
+  const handleRoleToggle = (role: SystemRole) => {
+    if (!selectedRoles || !onRolesChange) return
+    if (selectedRoles.includes(role)) {
+      onRolesChange(selectedRoles.filter(r => r !== role))
+    } else {
+      onRolesChange([...selectedRoles, role])
+    }
+  }
+
+  const roleLabels: Record<SystemRole, string> = {
+    game_master: "Game Master",
+    instructor: "Instructor",
+    administrator: "Administrator"
   }
 
   const getSortOptions = () => {
@@ -227,6 +248,47 @@ export function SearchFilterBar({
               </Popover>
             )}
 
+            {/* System Role Filter - Only show if onRolesChange is provided */}
+            {onRolesChange && (
+              <Popover open={roleFilterOpen} onOpenChange={setRoleFilterOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="flex items-center gap-2 h-9">
+                    <Filter className="w-4 h-4" />
+                    System Roles
+                    {(selectedRoles?.length || 0) > 0 && (
+                      <Badge variant="secondary" className="ml-1 h-5 text-xs">
+                        {selectedRoles?.length || 0}
+                      </Badge>
+                    )}
+                    <ChevronDown className="w-4 h-4" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-72" align="start">
+                  <div className="space-y-3">
+                    <h4 className="font-semibold text-sm">Filter by System Role</h4>
+                    <div className="max-h-60 overflow-y-auto space-y-2 p-1">
+                      {(Object.keys(roleLabels) as SystemRole[]).map(role => (
+                        <div key={role} className="flex items-center space-x-3 group hover:bg-muted/30 rounded-md p-2 -m-2 transition-colors">
+                          <Checkbox
+                            id={`role-${role}`}
+                            checked={selectedRoles?.includes(role) || false}
+                            onCheckedChange={() => handleRoleToggle(role)}
+                            className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
+                          />
+                          <label 
+                            htmlFor={`role-${role}`}
+                            className="text-sm cursor-pointer flex-1 font-medium group-hover:text-primary transition-colors"
+                          >
+                            {roleLabels[role]}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </PopoverContent>
+              </Popover>
+            )}
+
             {/* Sort Options */}
             <div className="flex items-center gap-3 ml-auto">
               <span className="text-sm font-medium text-muted-foreground">Sort by:</span>
@@ -269,7 +331,7 @@ export function SearchFilterBar({
           </div>
 
           {/* Active Filter Chips */}
-          {(selectedRanks.length > 0 || (selectedSchools?.length || 0) > 0) && (
+          {(selectedRanks.length > 0 || (selectedSchools?.length || 0) > 0 || (selectedRoles?.length || 0) > 0) && (
             <div className="flex flex-wrap gap-2 pt-2 border-t border-border/50">
               <span className="text-xs font-medium text-muted-foreground self-center">Active filters:</span>
               {selectedRanks.map(rankId => {
@@ -305,6 +367,20 @@ export function SearchFilterBar({
                   </Badge>
                 ) : null
               })}
+
+              {selectedRoles?.map(role => (
+                <Badge 
+                  key={role} 
+                  variant="secondary" 
+                  className="flex items-center gap-1.5 text-xs"
+                >
+                  Role: {roleLabels[role]}
+                  <X 
+                    className="w-3 h-3 cursor-pointer hover:text-destructive transition-colors" 
+                    onClick={() => handleRoleToggle(role)}
+                  />
+                </Badge>
+              ))}
             </div>
           )}
         </div>

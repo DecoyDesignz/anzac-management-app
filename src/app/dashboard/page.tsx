@@ -3,26 +3,31 @@
 import { useQuery } from "convex/react"
 import { api } from "../../../convex/_generated/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock } from "lucide-react"
+import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { DashboardLoading } from "@/components/dashboard/dashboard-loading"
+import { getThemeAwareColor, getTextColor } from "@/lib/utils"
+import { useTheme } from "@/providers/theme-provider"
 
 export default function DashboardPage() {
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
   const dashboardData = useQuery(api.dashboard.getDashboardOverview, {})
   const weekSchedule = useQuery(api.events.getWeekSchedule, {})
+  const nextWeekSchedule = useQuery(api.events.getNextWeekSchedule, {})
   const nextEvent = useQuery(api.events.getNextEvent, {})
 
-  if (!dashboardData || !weekSchedule) {
+  if (!dashboardData || !weekSchedule || !nextWeekSchedule) {
     return <DashboardLoading />
   }
 
-  // Helper function to format date and time
+  // Helper function to format date and time in user's local timezone
   const formatDateTime = (timestamp: number) => {
     const date = new Date(timestamp)
     return {
-      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-      time: date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
-      dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short' }),
+      date: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
+      time: date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }),
+      dayOfWeek: date.toLocaleDateString(undefined, { weekday: 'short' }),
     }
   }
 
@@ -166,8 +171,32 @@ export default function DashboardPage() {
                       className={`p-3 rounded-lg border border-border hover:border-primary/20 space-y-2 animate-fade-in-up opacity-0 animate-delay-${(index + 1) * 100} bg-secondary/10 transition-all duration-300`}
                     >
                       <div className="flex items-center justify-between">
-                        <h4 className="font-semibold text-sm text-foreground">{promotion.personnelName}</h4>
-                        <Badge variant="outline" className="text-xs">
+                        <div className="flex-1">
+                          <h4 className="font-semibold text-sm text-foreground">{promotion.personnelName}</h4>
+                          {/* System Roles */}
+                          {promotion.hasSystemAccess && promotion.roles && promotion.roles.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {promotion.roles.map((role) => {
+                                const adjustedColor = getThemeAwareColor(role.color, isDarkMode)
+                                return (
+                                  <Badge 
+                                    key={role.name} 
+                                    className="text-xs flex items-center gap-1"
+                                    style={{
+                                      backgroundColor: adjustedColor,
+                                      color: getTextColor(adjustedColor),
+                                      border: 'none'
+                                    }}
+                                  >
+                                    <Shield className="w-2.5 h-2.5" />
+                                    {role.displayName}
+                                  </Badge>
+                                )
+                              })}
+                            </div>
+                          )}
+                        </div>
+                        <Badge variant="outline" className="text-xs shrink-0">
                           {promotion.rankAbbreviation}
                         </Badge>
                       </div>
@@ -279,6 +308,97 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+      </div>
+
+      {/* Next Week's Schedule - Full Width */}
+      <div className="animate-fade-in-up opacity-0 animate-delay-600">
+        <Card variant="depth">
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl md:text-2xl font-bold text-foreground">Next Week&apos;s Schedule</CardTitle>
+                <p className="text-xs md:text-sm text-muted-foreground mt-1">Upcoming events for the next week</p>
+              </div>
+              <Calendar className="w-6 h-6 md:w-7 md:h-7 text-primary" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              {nextWeekSchedule.length > 0 ? (
+                nextWeekSchedule.map((event, idx) => {
+                  const dateTime = formatDateTime(event.startDate)
+                  const endTime = formatDateTime(event.endDate)
+                  return (
+                    <div
+                      key={event._id}
+                      className={`p-3 md:p-4 rounded-lg border border-border hover:border-primary/30 hover:shadow-md transition-all duration-300 animate-fade-in-up opacity-0 animate-delay-${Math.min((idx + 1) * 100, 500)} bg-secondary/10`}
+                    >
+                      <div className="flex items-start gap-3 md:gap-4">
+                        {/* Date Badge */}
+                        <div
+                          className="shrink-0 w-14 h-14 md:w-16 md:h-16 rounded-lg flex flex-col items-center justify-center text-center"
+                          style={{ backgroundColor: event.eventTypeColor + '20', border: `2px solid ${event.eventTypeColor}40` }}
+                        >
+                          <p className="text-xs font-medium" style={{ color: event.eventTypeColor }}>
+                            {dateTime.dayOfWeek}
+                          </p>
+                          <p className="text-lg font-bold" style={{ color: event.eventTypeColor }}>
+                            {dateTime.date.split(' ')[1]}
+                          </p>
+                          <p className="text-xs font-medium" style={{ color: event.eventTypeColor }}>
+                            {dateTime.date.split(' ')[0]}
+                          </p>
+                        </div>
+
+                        {/* Event Details */}
+                        <div className="flex-1 min-w-0 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex-1 min-w-0">
+                              <h3 className="text-base md:text-lg font-semibold text-foreground truncate">{event.title}</h3>
+                              <p className="text-xs md:text-sm text-muted-foreground line-clamp-2">{event.description || 'No description provided'}</p>
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2 md:gap-3 text-xs">
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">Time</p>
+                              <p className="font-medium text-foreground flex items-center gap-1">
+                                <Clock className="w-3 h-3" />
+                                {dateTime.time} - {endTime.time}
+                              </p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">Server</p>
+                              <p className="font-medium text-foreground">{event.server}</p>
+                            </div>
+                            <div className="space-y-1">
+                              <p className="text-muted-foreground">
+                                {event.title?.toLowerCase().includes('training') ? 'Instructors' : 'Game Masters'}
+                              </p>
+                              <p className="font-medium text-foreground">{event.instructorName}</p>
+                            </div>
+                          </div>
+
+                          <div className="pt-1">
+                            <Badge variant="outline" className="text-xs font-mono">
+                              Code: {event.bookingCode}
+                            </Badge>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })
+              ) : (
+                <div className="text-center py-16">
+                  <Calendar className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
+                  <p className="text-lg font-medium text-muted-foreground">No events scheduled for next week</p>
+                  <p className="text-sm text-muted-foreground mt-2">Schedule events for the upcoming week</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

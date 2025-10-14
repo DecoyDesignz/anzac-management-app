@@ -4,6 +4,7 @@ import { NextResponse } from "next/server"
 export default auth((req) => {
   const { nextUrl } = req
   const isLoggedIn = !!req.auth
+  const userRole = req.auth?.user?.role
 
   const isPublicRoute = nextUrl.pathname === "/login" || nextUrl.pathname === "/"
   const isProtectedRoute = nextUrl.pathname.startsWith("/dashboard") || nextUrl.pathname === "/change-password"
@@ -18,6 +19,24 @@ export default auth((req) => {
     const loginUrl = new URL("/login", nextUrl)
     loginUrl.searchParams.set("callbackUrl", nextUrl.pathname)
     return NextResponse.redirect(loginUrl)
+  }
+
+  // Member role restrictions - members can only access certain routes
+  if (isLoggedIn && userRole === "member") {
+    const memberAllowedRoutes = [
+      "/dashboard",
+      "/dashboard/calendar",
+      "/change-password",
+    ]
+    
+    const isAllowedRoute = memberAllowedRoutes.some(route => 
+      nextUrl.pathname === route || nextUrl.pathname.startsWith(route + "/")
+    )
+    
+    if (!isAllowedRoute && nextUrl.pathname.startsWith("/dashboard")) {
+      // Redirect members to main dashboard if trying to access restricted routes
+      return NextResponse.redirect(new URL("/dashboard", nextUrl))
+    }
   }
 
   return NextResponse.next()

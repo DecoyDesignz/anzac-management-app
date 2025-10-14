@@ -5,6 +5,33 @@ import { Id, Doc } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 
 /**
+ * Get role by role name
+ */
+async function getRoleByName(ctx: any, roleName: string) {
+  return await ctx.db
+    .query("roles")
+    .withIndex("by_role_name", (q: any) => q.eq("roleName", roleName))
+    .first();
+}
+
+/**
+ * Get role by role ID
+ */
+async function getRoleById(ctx: any, roleId: string) {
+  return await ctx.db.get(roleId as any);
+}
+
+/**
+ * Get all available roles
+ */
+export const getAllRoles = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("roles").collect();
+  },
+});
+
+/**
  * Get the current authenticated user (returns null if not authenticated)
  */
 export const getCurrentUser = query({
@@ -17,18 +44,18 @@ export const getCurrentUser = query({
 });
 
 /**
- * Get a user by username (for authentication purposes)
+ * Get a user by username/callSign (for authentication purposes)
  * This is used by NextAuth to authenticate users
  */
 export const getUserByUsername = query({
   args: { username: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("systemUsers")
-      .withIndex("by_name", (q) => q.eq("name", args.username))
+    const person = await ctx.db
+      .query("personnel")
+      .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
       .first();
     
-    return user;
+    return person;
   },
 });
 
@@ -39,17 +66,17 @@ export const getUserByUsername = query({
 export const getUserByEmail = query({
   args: { email: v.string() },
   handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("systemUsers")
+    const person = await ctx.db
+      .query("personnel")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
     
-    return user;
+    return person;
   },
 });
 
 /**
- * List all users (Super Admin only)
+ * List all personnel with system access (Super Admin only)
  */
 export const listUsers = query({
   args: {
@@ -57,22 +84,35 @@ export const listUsers = query({
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     )),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, "super_admin");
 
-    const users = await ctx.db.query("systemUsers").collect();
+    // Get all personnel with passwordHash (system access)
+    const allPersonnel = await ctx.db.query("personnel").collect();
+    const usersWithAccess = allPersonnel.filter(p => p.passwordHash !== undefined);
     
     if (args.role) {
+      // Get the role ID for the specified role name
+      const roleRecord = await ctx.db
+        .query("roles")
+        .withIndex("by_role_name", (q) => q.eq("roleName", args.role!))
+        .first();
+      
+      if (!roleRecord) {
+        return [];
+      }
+      
       // Filter users by role
       const usersWithRole = await Promise.all(
-        users.map(async (user) => {
+        usersWithAccess.map(async (user) => {
           const userRole = await ctx.db
             .query("userRoles")
-            .withIndex("by_user_and_role", (q) => 
-              q.eq("userId", user._id).eq("role", args.role!)
+            .withIndex("by_personnel_and_role", (q) => 
+              q.eq("personnelId", user._id).eq("roleId", roleRecord._id)
             )
             .first();
           return userRole ? user : null;
@@ -81,31 +121,43 @@ export const listUsers = query({
       return usersWithRole.filter(user => user !== null);
     }
     
-    return users;
+    return usersWithAccess;
   },
 });
 
 /**
- * List all users with their roles (Administrator and Super Admin only)
+ * List all personnel with system access and their roles (Administrator and Super Admin only)
  */
 export const listUsersWithRoles = query({
   args: {},
   handler: async (ctx) => {
     await requireRole(ctx, "administrator");
 
-    const users = await ctx.db.query("systemUsers").order("desc").collect();
+    // Get all personnel with passwordHash (system access)
+    const allPersonnel = await ctx.db.query("personnel").order("desc").collect();
+    const usersWithAccess = allPersonnel.filter(p => p.passwordHash !== undefined);
     
     // Get roles for each user
     const usersWithRoles = await Promise.all(
-      users.map(async (user) => {
-        const userRoles = await ctx.db
+      usersWithAccess.map(async (user) => {
+        const personnelRoles = await ctx.db
           .query("userRoles")
-          .withIndex("by_user", (q) => q.eq("userId", user._id))
+          .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
           .collect();
+        
+        // Get role details for each user role
+        const rolesWithDetails = await Promise.all(
+          personnelRoles.map(async (ur) => {
+            if (!ur.roleId) return 'unknown';
+            const role = await getRoleById(ctx, ur.roleId);
+            return role?.roleName || 'unknown';
+          })
+        );
         
         return {
           ...user,
-          roles: userRoles.map(ur => ur.role),
+          name: user.callSign, // For compatibility with frontend
+          roles: rolesWithDetails,
         };
       })
     );
@@ -115,80 +167,109 @@ export const listUsersWithRoles = query({
 });
 
 /**
- * Get a specific user by ID
+ * Get a specific personnel member by ID
  */
 export const getUser = query({
-  args: { userId: v.id("systemUsers") },
+  args: { userId: v.id("personnel") },
   handler: async (ctx, args) => {
     await requireRole(ctx, "administrator");
-    const user = await ctx.db.get(args.userId);
-    return user;
+    const person = await ctx.db.get(args.userId);
+    return person;
   },
 });
 
 /**
- * Get user roles for a specific user
+ * Get user roles for a specific personnel member
  */
 export const getUserRoles = query({
-  args: { userId: v.id("systemUsers") },
+  args: { userId: v.id("personnel") },
   handler: async (ctx, args) => {
     await requireAuth(ctx);
 
-    const userRoles = await ctx.db
+    const personnelRoles = await ctx.db
       .query("userRoles")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
-    return userRoles.map(ur => ur.role);
+    // Get role details for each user role
+    const rolesWithDetails = await Promise.all(
+      personnelRoles.map(async (ur) => {
+        if (!ur.roleId) return null;
+        const role = await getRoleById(ctx, ur.roleId);
+        return {
+          roleId: ur.roleId,
+          roleName: role?.roleName,
+          displayName: role?.displayName,
+          color: role?.color,
+          description: role?.description
+        };
+      })
+    );
+
+    return rolesWithDetails.filter(r => r !== null);
   },
 });
 
 /**
- * Create a new user record (Super Admin only)
- * Note: User must sign up through the login page first to create auth credentials
+ * Create a new personnel record with system access (Super Admin only)
+ * Note: This creates a personnel record with login capability
  */
 export const createUser = mutation({
   args: {
     email: v.optional(v.string()),
-    name: v.string(), // Username - must be unique
+    name: v.string(), // CallSign - must be unique
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     )),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, "super_admin");
 
-    // Check if username already exists
-    const existingUser = await ctx.db
-      .query("systemUsers")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
+    // Check if callSign already exists
+    const existingPerson = await ctx.db
+      .query("personnel")
+      .withIndex("by_callsign", (q) => q.eq("callSign", args.name))
       .first();
 
-    if (existingUser) {
-      throw new Error("Username already exists");
+    if (existingPerson) {
+      throw new Error("CallSign already exists");
     }
 
-    // Create the user
-    const userId = await ctx.db.insert("systemUsers", {
+    // Get default rank
+    const privateRank = await ctx.db
+      .query("ranks")
+      .filter((q) => q.eq(q.field("abbreviation"), "PTE"))
+      .first();
+
+    // Create the personnel with system access
+    const personnelId = await ctx.db.insert("personnel", {
       email: args.email,
-      name: args.name, // Username
+      callSign: args.name,
+      status: "active",
+      joinDate: Date.now(),
+      rankId: privateRank?._id,
+      // System access fields (will be set when password is created)
       isActive: true,
       requirePasswordChange: false,
       lastPasswordChange: Date.now(),
     });
 
     // Create user roles
-    for (const role of args.roles) {
-      await ctx.db.insert("userRoles", {
-        userId,
-        role,
-      });
+    for (const roleName of args.roles) {
+      const role = await getRoleByName(ctx, roleName);
+      if (role) {
+        await ctx.db.insert("userRoles", {
+          personnelId,
+          roleId: role._id,
+        });
+      }
     }
 
-    return userId;
+    return personnelId;
   },
 });
 
@@ -198,12 +279,13 @@ export const createUser = mutation({
  */
 export const updateUserRoles = mutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     )),
   },
   handler: async (ctx, args) => {
@@ -220,7 +302,7 @@ export const updateUserRoles = mutation({
     // Remove existing roles
     const existingRoles = await ctx.db
       .query("userRoles")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
     for (const role of existingRoles) {
@@ -228,11 +310,14 @@ export const updateUserRoles = mutation({
     }
 
     // Add new roles
-    for (const role of args.roles) {
-      await ctx.db.insert("userRoles", {
-        userId: args.userId,
-        role,
-      });
+    for (const roleName of args.roles) {
+      const role = await getRoleByName(ctx, roleName);
+      if (role) {
+        await ctx.db.insert("userRoles", {
+          personnelId: args.userId,
+          roleId: role._id,
+        });
+      }
     }
 
     return { success: true };
@@ -240,37 +325,37 @@ export const updateUserRoles = mutation({
 });
 
 /**
- * Update user information (Administrator and Super Admin only)
+ * Update personnel information (Administrator and Super Admin only)
  */
 export const updateUser = mutation({
   args: {
-    userId: v.id("systemUsers"),
-    name: v.optional(v.string()), // Username
+    userId: v.id("personnel"),
+    name: v.optional(v.string()), // CallSign
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, "administrator");
 
-    const user = await ctx.db.get(args.userId);
-    if (!user) {
-      throw new Error("User not found");
+    const person = await ctx.db.get(args.userId);
+    if (!person) {
+      throw new Error("Personnel not found");
     }
 
-    // Check if username is being changed and if it's already taken
-    if (args.name && args.name !== user.name) {
-      const newUsername = args.name; // Type narrowing for the query
-      const existingUser = await ctx.db
-        .query("systemUsers")
-        .withIndex("by_name", (q) => q.eq("name", newUsername))
+    // Check if callSign is being changed and if it's already taken
+    if (args.name && args.name !== person.callSign) {
+      const newCallSign = args.name; // Type narrowing for the query
+      const existingPerson = await ctx.db
+        .query("personnel")
+        .withIndex("by_callsign", (q) => q.eq("callSign", newCallSign))
         .first();
       
-      if (existingUser) {
-        throw new Error("Username already taken");
+      if (existingPerson) {
+        throw new Error("CallSign already taken");
       }
     }
 
-    // Update the user
+    // Update the personnel
     const updates: any = {};
-    if (args.name !== undefined) updates.name = args.name;
+    if (args.name !== undefined) updates.callSign = args.name;
 
     await ctx.db.patch(args.userId, updates);
 
@@ -283,29 +368,31 @@ export const updateUser = mutation({
  * Cannot deactivate Super Administrators
  */
 export const toggleUserStatus = mutation({
-  args: { userId: v.id("systemUsers") },
+  args: { userId: v.id("personnel") },
   handler: async (ctx, args) => {
     await requireRole(ctx, "super_admin");
 
-    const user = await ctx.db.get(args.userId);
-    if (!user) {
-      throw new Error("User not found");
+    const person = await ctx.db.get(args.userId);
+    if (!person) {
+      throw new Error("Personnel not found");
     }
 
-    // Check if user is a super admin
-    const userRoles = await ctx.db
+    // Check if person is a super admin
+    const personnelRoles = await ctx.db
       .query("userRoles")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
-    const isSuperAdmin = userRoles.some(role => role.role === "super_admin");
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const isSuperAdmin = personnelRoles.some(role => role.roleId && roleMap.get(role.roleId) === "super_admin");
 
     if (isSuperAdmin) {
       throw new Error("Cannot deactivate Super Administrator accounts");
     }
 
     await ctx.db.patch(args.userId, {
-      isActive: !user.isActive,
+      isActive: !person.isActive,
     });
 
     return { success: true };
@@ -313,50 +400,58 @@ export const toggleUserStatus = mutation({
 });
 
 /**
- * Delete a user (Super Admin only)
- * This also removes all associated user roles
+ * Delete a personnel member with system access (Super Admin only)
+ * This removes system access and all associated user roles
  * Cannot delete Super Administrators
+ * Note: This does NOT delete the personnel record, only removes system access
  */
 export const deleteUser = mutation({
-  args: { userId: v.id("systemUsers") },
+  args: { userId: v.id("personnel") },
   handler: async (ctx, args) => {
     await requireRole(ctx, "super_admin");
 
-    const user = await ctx.db.get(args.userId);
-    if (!user) {
-      throw new Error("User not found");
+    const person = await ctx.db.get(args.userId);
+    if (!person) {
+      throw new Error("Personnel not found");
     }
 
     // Get all user roles first
-    const userRoles = await ctx.db
+    const personnelRoles = await ctx.db
       .query("userRoles")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
-    // Check if user is a super admin
-    const isSuperAdmin = userRoles.some(role => role.role === "super_admin");
+    // Check if person is a super admin
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const isSuperAdmin = personnelRoles.some(role => role.roleId && roleMap.get(role.roleId) === "super_admin");
 
     if (isSuperAdmin) {
       throw new Error("Cannot delete Super Administrator accounts");
     }
 
     // Delete all user roles
-    for (const role of userRoles) {
+    for (const role of personnelRoles) {
       await ctx.db.delete(role._id);
     }
 
     // Delete instructor school assignments if any
     const instructorAssignments = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
     for (const assignment of instructorAssignments) {
       await ctx.db.delete(assignment._id);
     }
 
-    // Delete the user
-    await ctx.db.delete(args.userId);
+    // Remove system access by clearing password and setting isActive to false
+    await ctx.db.patch(args.userId, {
+      passwordHash: undefined,
+      isActive: false,
+      requirePasswordChange: undefined,
+      lastPasswordChange: undefined,
+    });
 
     return { success: true };
   },
@@ -367,29 +462,32 @@ export const deleteUser = mutation({
  */
 export const assignInstructorToSchool = mutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, "administrator");
 
-    // Verify user is an instructor
-    const instructorRole = await ctx.db
+    // Verify person is an instructor
+    const roles = await ctx.db.query("roles").collect();
+    const instructorRoleDef = roles.find(r => r.roleName === "instructor");
+    
+    const instructorRole = instructorRoleDef ? await ctx.db
       .query("userRoles")
-      .withIndex("by_user_and_role", (q) => 
-        q.eq("userId", args.userId).eq("role", "instructor")
+      .withIndex("by_personnel_and_role", (q) => 
+        q.eq("personnelId", args.userId).eq("roleId", instructorRoleDef._id)
       )
-      .first();
+      .first() : null;
 
     if (!instructorRole) {
-      throw new Error("User must be an instructor");
+      throw new Error("Personnel must be an instructor");
     }
 
     // Check if already assigned
     const existing = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user_and_school", (q) =>
-        q.eq("userId", args.userId).eq("schoolId", args.schoolId)
+      .withIndex("by_personnel_and_school", (q) =>
+        q.eq("personnelId", args.userId).eq("schoolId", args.schoolId)
       )
       .first();
 
@@ -399,7 +497,7 @@ export const assignInstructorToSchool = mutation({
 
     // Create assignment
     const assignmentId = await ctx.db.insert("instructorSchools", {
-      userId: args.userId,
+      personnelId: args.userId,
       schoolId: args.schoolId,
     });
 
@@ -412,7 +510,7 @@ export const assignInstructorToSchool = mutation({
  */
 export const removeInstructorFromSchool = mutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
@@ -420,8 +518,8 @@ export const removeInstructorFromSchool = mutation({
 
     const assignment = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user_and_school", (q) =>
-        q.eq("userId", args.userId).eq("schoolId", args.schoolId)
+      .withIndex("by_personnel_and_school", (q) =>
+        q.eq("personnelId", args.userId).eq("schoolId", args.schoolId)
       )
       .first();
 
@@ -438,13 +536,13 @@ export const removeInstructorFromSchool = mutation({
  * Get schools assigned to an instructor
  */
 export const getInstructorSchools = query({
-  args: { userId: v.id("systemUsers") },
+  args: { userId: v.id("personnel") },
   handler: async (ctx, args) => {
     await requireAuth(ctx);
 
     const assignments = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
     const schools = await Promise.all(
@@ -459,11 +557,11 @@ export const getInstructorSchools = query({
 });
 
 /**
- * Set user password hash (called from NextAuth or when creating users)
+ * Set personnel password hash (called from NextAuth or when creating users)
  */
 export const setUserPassword = mutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     passwordHash: v.string(),
   },
   handler: async (ctx, args) => {
@@ -477,49 +575,62 @@ export const setUserPassword = mutation({
 });
 
 /**
- * Internal mutation to create systemUser record after auth account is created
+ * Internal mutation to create personnel record with system access after auth account is created
  */
 export const createSystemUserRecord = internalMutation({
   args: {
     email: v.optional(v.string()),
-    name: v.string(), // Username - must be unique
+    name: v.string(), // CallSign - must be unique
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     )),
     requirePasswordChange: v.boolean(),
   },
   handler: async (ctx, args) => {
-    // Check if username already exists
-    const existingUser = await ctx.db
-      .query("systemUsers")
-      .withIndex("by_name", (q) => q.eq("name", args.name))
+    // Check if callSign already exists
+    const existingPerson = await ctx.db
+      .query("personnel")
+      .withIndex("by_callsign", (q) => q.eq("callSign", args.name))
       .first();
 
-    if (existingUser) {
-      return existingUser._id;
+    if (existingPerson) {
+      return existingPerson._id;
     }
 
-    // Create the system user record
-    const userId = await ctx.db.insert("systemUsers", {
+    // Get default rank
+    const privateRank = await ctx.db
+      .query("ranks")
+      .filter((q) => q.eq(q.field("abbreviation"), "PTE"))
+      .first();
+
+    // Create the personnel record with system access
+    const personnelId = await ctx.db.insert("personnel", {
       email: args.email,
-      name: args.name, // Username
+      callSign: args.name,
+      status: "active",
+      joinDate: Date.now(),
+      rankId: privateRank?._id,
       isActive: true,
       requirePasswordChange: args.requirePasswordChange,
       lastPasswordChange: Date.now(),
     });
 
     // Create user roles
-    for (const role of args.roles) {
-      await ctx.db.insert("userRoles", {
-        userId,
-        role,
-      });
+    for (const roleName of args.roles) {
+      const role = await getRoleByName(ctx, roleName);
+      if (role) {
+        await ctx.db.insert("userRoles", {
+          personnelId,
+          roleId: role._id,
+        });
+      }
     }
 
-    return userId;
+    return personnelId;
   },
 });
 
@@ -529,19 +640,20 @@ export const createSystemUserRecord = internalMutation({
  */
 
 /**
- * Internal mutation to create user account
+ * Internal mutation to create personnel account with system access
  * Note: Administrators are not allowed to create super_admin accounts
  * This is enforced at the UI level and should be validated by calling context
  */
 export const createUserAccountInternal = internalMutation({
   args: {
-    name: v.string(), // Username - must be unique
+    name: v.string(), // CallSign - must be unique
     passwordHash: v.string(),
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     )),
   },
   handler: async (ctx, args) => {
@@ -553,8 +665,17 @@ export const createUserAccountInternal = internalMutation({
       // The UI prevents administrators from selecting super_admin role
     }
 
-    const userId = await ctx.db.insert("systemUsers", {
-      name: args.name, // Username
+    // Get default rank
+    const privateRank = await ctx.db
+      .query("ranks")
+      .filter((q) => q.eq(q.field("abbreviation"), "PTE"))
+      .first();
+
+    const personnelId = await ctx.db.insert("personnel", {
+      callSign: args.name,
+      status: "active",
+      joinDate: Date.now(),
+      rankId: privateRank?._id,
       passwordHash: args.passwordHash,
       isActive: true,
       requirePasswordChange: true,
@@ -562,16 +683,19 @@ export const createUserAccountInternal = internalMutation({
     });
 
     // Create user roles
-    for (const role of args.roles) {
-      await ctx.db.insert("userRoles", {
-        userId,
-        role,
-      });
+    for (const roleName of args.roles) {
+      const role = await getRoleByName(ctx, roleName);
+      if (role) {
+        await ctx.db.insert("userRoles", {
+          personnelId,
+          roleId: role._id,
+        });
+      }
     }
 
     return {
       success: true,
-      userId,
+      userId: personnelId,
     };
   },
 });
@@ -586,7 +710,7 @@ export const createUserAccountInternal = internalMutation({
  */
 export const updatePassword = internalMutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     newPasswordHash: v.string(),
   },
   handler: async (ctx, args) => {
@@ -603,7 +727,7 @@ export const updatePassword = internalMutation({
  */
 export const resetPassword = internalMutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     newPasswordHash: v.string(),
   },
   handler: async (ctx, args) => {

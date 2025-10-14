@@ -55,8 +55,9 @@ export const getSchoolInstructors = query({
 
     const instructors = await Promise.all(
       assignments.map(async (assignment) => {
-        const user = await ctx.db.get(assignment.userId);
-        return user;
+        if (!assignment.personnelId) return null;
+        const person = await ctx.db.get(assignment.personnelId);
+        return person ? { ...person, name: person.callSign } : null;
       })
     );
 
@@ -72,6 +73,7 @@ export const createSchool = mutation({
     name: v.string(),
     abbreviation: v.string(),
     iconUrl: v.optional(v.string()),
+    color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     await requireRole(ctx, "administrator");
@@ -90,6 +92,7 @@ export const createSchool = mutation({
       name: args.name,
       abbreviation: args.abbreviation,
       iconUrl: args.iconUrl,
+      color: args.color,
     });
 
     return schoolId;
@@ -105,6 +108,7 @@ export const updateSchool = mutation({
     name: v.optional(v.string()),
     abbreviation: v.optional(v.string()),
     iconUrl: v.optional(v.string()),
+    color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx);
@@ -190,7 +194,7 @@ export const deleteSchool = mutation({
  */
 export const assignInstructor = mutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
@@ -199,8 +203,8 @@ export const assignInstructor = mutation({
     // Check if assignment already exists
     const existing = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user_and_school", (q) =>
-        q.eq("userId", args.userId).eq("schoolId", args.schoolId)
+      .withIndex("by_personnel_and_school", (q) =>
+        q.eq("personnelId", args.userId).eq("schoolId", args.schoolId)
       )
       .first();
 
@@ -208,31 +212,34 @@ export const assignInstructor = mutation({
       throw new Error("Instructor is already assigned to this school");
     }
 
-    // Verify user exists and has appropriate role
-    const user = await ctx.db.get(args.userId);
-    if (!user) {
-      throw new Error("User not found");
+    // Verify personnel exists and has appropriate role
+    const person = await ctx.db.get(args.userId);
+    if (!person) {
+      throw new Error("Personnel not found");
     }
 
-    // Check user roles
-    const userRoles = await ctx.db
+    // Check personnel roles
+    const personnelRoles = await ctx.db
       .query("userRoles")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.userId))
       .collect();
 
-    const roles = userRoles.map((r) => r.role);
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const roleNames = personnelRoles.map((r) => r.roleId ? roleMap.get(r.roleId) : null).filter(Boolean);
+    
     const canBeInstructor =
-      roles.includes("instructor") ||
-      roles.includes("administrator") ||
-      roles.includes("super_admin");
+      roleNames.includes("instructor") ||
+      roleNames.includes("administrator") ||
+      roleNames.includes("super_admin");
 
     if (!canBeInstructor) {
-      throw new Error("User must have instructor role or higher");
+      throw new Error("Personnel must have instructor role or higher");
     }
 
     // Create assignment
     const assignmentId = await ctx.db.insert("instructorSchools", {
-      userId: args.userId,
+      personnelId: args.userId,
       schoolId: args.schoolId,
     });
 
@@ -245,7 +252,7 @@ export const assignInstructor = mutation({
  */
 export const unassignInstructor = mutation({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
@@ -253,8 +260,8 @@ export const unassignInstructor = mutation({
 
     const assignment = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user_and_school", (q) =>
-        q.eq("userId", args.userId).eq("schoolId", args.schoolId)
+      .withIndex("by_personnel_and_school", (q) =>
+        q.eq("personnelId", args.userId).eq("schoolId", args.schoolId)
       )
       .first();
 
@@ -286,19 +293,25 @@ export const listSchoolsWithInstructors = query({
 
         const instructors = await Promise.all(
           assignments.map(async (assignment) => {
-            const user = await ctx.db.get(assignment.userId);
-            if (!user) return null;
+            if (!assignment.personnelId) return null;
+            const person = await ctx.db.get(assignment.personnelId);
+            if (!person) return null;
 
-            const userRoles = await ctx.db
+            const personnelRoles = await ctx.db
               .query("userRoles")
-              .withIndex("by_user", (q) => q.eq("userId", user._id))
+              .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
               .collect();
 
+            // Get role names from role IDs
+            const roles = await ctx.db.query("roles").collect();
+            const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+            const roleNames = personnelRoles.map((r) => r.roleId ? roleMap.get(r.roleId) : null).filter(Boolean);
+
             return {
-              _id: user._id,
-              name: user.name,
-              email: user.email,
-              roles: userRoles.map((r) => r.role),
+              _id: person._id,
+              name: person.callSign,
+              email: person.email,
+              roles: roleNames,
             };
           })
         );
@@ -316,26 +329,26 @@ export const listSchoolsWithInstructors = query({
 });
 
 /**
- * Get instructor school assignments by username
+ * Get instructor school assignments by callSign
  * Helper query to check which schools an instructor is assigned to
  */
 export const getInstructorAssignmentsByName = query({
   args: { username: v.string() },
   handler: async (ctx, args) => {
-    // Find the user by username
-    const user = await ctx.db
-      .query("systemUsers")
-      .withIndex("by_name", (q) => q.eq("name", args.username))
+    // Find the personnel by callSign
+    const person = await ctx.db
+      .query("personnel")
+      .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
       .first();
 
-    if (!user) {
-      return { error: "User not found" };
+    if (!person) {
+      return { error: "Personnel not found" };
     }
 
     // Get school assignments
     const assignments = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
       .collect();
 
     // Get school details
@@ -346,8 +359,8 @@ export const getInstructorAssignmentsByName = query({
     );
 
     return {
-      userId: user._id,
-      username: user.name,
+      userId: person._id,
+      username: person.callSign,
       assignedSchools: schools.filter((s) => s !== null),
     };
   },
@@ -364,7 +377,8 @@ export const listManagedSchools = query({
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     ),
   },
   handler: async (ctx, args) => {
@@ -376,19 +390,19 @@ export const listManagedSchools = query({
 
     // Instructors only see their assigned schools
     if (args.role === "instructor") {
-      // Find the user by username
-      const user = await ctx.db
-        .query("systemUsers")
-        .withIndex("by_name", (q) => q.eq("name", args.username))
+      // Find the personnel by callSign
+      const person = await ctx.db
+        .query("personnel")
+        .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
         .first();
 
-      if (!user) {
+      if (!person) {
         return [];
       }
 
       const assignments = await ctx.db
         .query("instructorSchools")
-        .withIndex("by_user", (q) => q.eq("userId", user._id))
+        .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
         .collect();
 
       const schools = await Promise.all(
@@ -400,7 +414,7 @@ export const listManagedSchools = query({
       return schools.filter((s) => s !== null);
     }
 
-    // Game masters and others cannot manage schools
+    // Game masters, members and others cannot manage schools
     return [];
   },
 });

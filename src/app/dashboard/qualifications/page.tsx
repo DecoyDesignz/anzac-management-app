@@ -36,6 +36,11 @@ import {
 import { Award, Users, Plus, Search, TrendingUp, CheckCircle, Clock, Edit, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Id } from "../../../../convex/_generated/dataModel"
+import { getUserFriendlyError, getSchoolColorStyles, getThemeAwareColor } from "@/lib/utils"
+import { useTheme } from "@/providers/theme-provider"
+import { FormDialog } from "@/components/common/form-dialog"
+import { LoadingState } from "@/components/common/loading-state"
+import { EmptyState } from "@/components/common/empty-state"
 
 type QualificationWithSchool = {
   _id: string
@@ -73,6 +78,8 @@ import {
 export default function QualificationsPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedSchool, setSelectedSchool] = useState<string>("all")
   const [awardModalOpen, setAwardModalOpen] = useState(false)
@@ -86,6 +93,7 @@ export default function QualificationsPage() {
   const [newQualAbbr, setNewQualAbbr] = useState("")
   const [newQualSchoolId, setNewQualSchoolId] = useState<Id<"schools"> | "">("")
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   
   // Edit Qualification state
   const [editQualificationOpen, setEditQualificationOpen] = useState(false)
@@ -99,6 +107,7 @@ export default function QualificationsPage() {
   const [editQualAbbr, setEditQualAbbr] = useState("")
   const [editQualSchoolId, setEditQualSchoolId] = useState<Id<"schools"> | "">("")
   const [isEditSubmitting, setIsEditSubmitting] = useState(false)
+  const [editFormError, setEditFormError] = useState<string | null>(null)
   
   // View Personnel state
   const [viewPersonnelOpen, setViewPersonnelOpen] = useState(false)
@@ -109,6 +118,7 @@ export default function QualificationsPage() {
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<Id<"personnel"> | "">("")
   const [awardNotes, setAwardNotes] = useState("")
   const [isAwarding, setIsAwarding] = useState(false)
+  const [awardFormError, setAwardFormError] = useState<string | null>(null)
   
   // Check if user can add/edit qualifications (all roles except game_master)
   const canManageQualifications = session?.user?.role !== 'game_master'
@@ -165,15 +175,12 @@ export default function QualificationsPage() {
   // Handler for updating a qualification
   const handleUpdateQualification = async () => {
     if (!editingQual || !editQualName.trim() || !editQualAbbr.trim() || !editQualSchoolId) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      })
+      setEditFormError("Please fill in all required fields.")
       return
     }
     
     setIsEditSubmitting(true)
+    setEditFormError(null)
     
     try {
       await updateQualification({
@@ -194,12 +201,9 @@ export default function QualificationsPage() {
       setEditQualAbbr("")
       setEditQualSchoolId("")
       setEditQualificationOpen(false)
+      setEditFormError(null)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update qualification.",
-        variant: "destructive",
-      })
+      setEditFormError(getUserFriendlyError(error))
     } finally {
       setIsEditSubmitting(false)
     }
@@ -208,15 +212,12 @@ export default function QualificationsPage() {
   // Handler for creating a qualification
   const handleCreateQualification = async () => {
     if (!newQualName.trim() || !newQualAbbr.trim() || !newQualSchoolId) {
-      toast({
-        title: "Validation Error",
-        description: "Please fill in all required fields.",
-        variant: "destructive",
-      })
+      setFormError("Please fill in all required fields.")
       return
     }
     
     setIsSubmitting(true)
+    setFormError(null)
     
     try {
       await createQualification({
@@ -235,12 +236,9 @@ export default function QualificationsPage() {
       setNewQualAbbr("")
       setNewQualSchoolId("")
       setAddQualificationOpen(false)
+      setFormError(null)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create qualification.",
-        variant: "destructive",
-      })
+      setFormError(getUserFriendlyError(error))
     } finally {
       setIsSubmitting(false)
     }
@@ -249,15 +247,12 @@ export default function QualificationsPage() {
   // Handler for awarding a qualification
   const handleAwardQualification = async () => {
     if (!selectedQualificationId || !selectedPersonnelId) {
-      toast({
-        title: "Validation Error",
-        description: "Please select both a qualification and personnel member.",
-        variant: "destructive",
-      })
+      setAwardFormError("Please select both a qualification and personnel member.")
       return
     }
     
     setIsAwarding(true)
+    setAwardFormError(null)
     
     try {
       const selectedPerson = personnel?.find(p => p._id === selectedPersonnelId)
@@ -280,12 +275,9 @@ export default function QualificationsPage() {
       setSelectedPersonnelId("")
       setAwardNotes("")
       setAwardModalOpen(false)
+      setAwardFormError(null)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to award qualification.",
-        variant: "destructive",
-      })
+      setAwardFormError(getUserFriendlyError(error))
     } finally {
       setIsAwarding(false)
     }
@@ -439,22 +431,15 @@ export default function QualificationsPage() {
       totalAwarded: schoolQuals.reduce((sum, qual) => sum + (qual.personnelCount || 0), 0)
     }
     return acc
-  }, {} as Record<string, { school: { _id: string; name: string; abbreviation: string }; qualifications: Array<{ _id: string; name: string; abbreviation: string; schoolId: string; personnelCount?: number }>; totalAwarded: number }>) || {}
+  }, {} as Record<string, { school: { _id: string; name: string; abbreviation: string; color?: string }; qualifications: Array<{ _id: string; name: string; abbreviation: string; schoolId: string; personnelCount?: number }>; totalAwarded: number }>) || {}
 
   const totalQualifications = qualifications?.length || 0
   const totalAwarded = qualifications?.reduce((sum, qual) => sum + (qual.personnelCount || 0), 0) || 0
   const averagePerPerson = personnel?.length ? Math.round(totalAwarded / personnel.length) : 0
 
-  const getSchoolColor = (schoolName: string) => {
-    const colors = {
-      "Infantry": "bg-yellow-500/20 border-yellow-500/30 text-yellow-700 dark:text-yellow-300",
-      "Engineers": "bg-orange-500/20 border-orange-500/30 text-orange-700 dark:text-orange-300",
-      "Armour": "bg-blue-500/20 border-blue-500/30 text-blue-700 dark:text-blue-300",
-      "Artillery": "bg-cyan-500/20 border-cyan-500/30 text-cyan-700 dark:text-cyan-300",
-      "Aviation": "bg-green-500/20 border-green-500/30 text-green-700 dark:text-green-300",
-      "Command": "bg-purple-500/20 border-purple-500/30 text-purple-700 dark:text-purple-300",
-    }
-    return colors[schoolName as keyof typeof colors] || "bg-gray-500/20 border-gray-500/30"
+  // Loading state
+  if (!qualifications || !schools || !personnel) {
+    return <LoadingState type="skeleton" count={5} />
   }
 
   return (
@@ -465,19 +450,10 @@ export default function QualificationsPage() {
             <h2 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-primary">
               Qualifications
             </h2>
-            {/* Status indicator */}
-            <div className="glass-subtle px-2 py-1 rounded-lg border border-green-500/30">
-              <div className="flex items-center gap-1">
-                <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
-                <span className="text-xs text-green-400">{totalQualifications} Available</span>
-              </div>
-            </div>
           </div>
           <p className="text-muted-foreground text-sm md:text-base lg:text-lg">
             Manage and track personnel qualifications across all schools
           </p>
-          {/* Decorative accent bar */}
-          <div className="absolute -bottom-2 left-0 w-16 md:w-24 h-0.5 bg-primary rounded-full"></div>
         </div>
         
         <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
@@ -493,99 +469,95 @@ export default function QualificationsPage() {
                 Award Qualification
               </Button>
               
-              <Dialog open={awardModalOpen} onOpenChange={handleCloseAwardDialog}>
-            <DialogContent className="max-w-2xl">
-              <DialogHeader>
-                <DialogTitle>Award Qualification</DialogTitle>
-                <DialogDescription>
-                  Award a qualification to a personnel member (will be dated today)
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="select-qualification">Select Qualification *</Label>
-                  <SearchableSelect
-                    id="select-qualification"
-                    options={qualificationOptions}
-                    value={selectedQualificationId as string}
-                    onValueChange={(value) => setSelectedQualificationId(value as Id<"qualifications">)}
-                    placeholder="Choose a qualification"
-                    searchPlaceholder="Search qualifications..."
-                    emptyMessage="No qualifications found."
-                    disabled={isAwarding}
-                    className="mt-1"
-                  />
-                </div>
-                
-                <div>
-                  <Label htmlFor="select-personnel">Select Personnel *</Label>
-                  <SearchableSelect
-                    id="select-personnel"
-                    options={personnelOptions}
-                    value={selectedPersonnelId as string}
-                    onValueChange={(value) => setSelectedPersonnelId(value as Id<"personnel">)}
-                    placeholder="Choose personnel"
-                    searchPlaceholder="Search personnel..."
-                    emptyMessage="No personnel found."
-                    disabled={isAwarding}
-                    className="mt-1"
-                  />
-                </div>
+              <FormDialog
+                open={awardModalOpen}
+                onOpenChange={handleCloseAwardDialog}
+                title="Award Qualification"
+                description="Award a qualification to a personnel member (will be dated today)"
+                onSubmit={handleAwardQualification}
+                submitText="Award Qualification"
+                isSubmitting={isAwarding}
+                error={awardFormError}
+                maxWidth="2xl"
+                disabled={!selectedQualificationId || !selectedPersonnelId}
+              >
+                <div className="space-y-4">
+                  <div>
+                    <Label htmlFor="select-qualification">Select Qualification *</Label>
+                    <SearchableSelect
+                      id="select-qualification"
+                      options={qualificationOptions}
+                      value={selectedQualificationId as string}
+                      onValueChange={(value) => setSelectedQualificationId(value as Id<"qualifications">)}
+                      placeholder="Choose a qualification"
+                      searchPlaceholder="Search qualifications..."
+                      emptyMessage="No qualifications found."
+                      disabled={isAwarding}
+                      className="mt-1"
+                    />
+                  </div>
+                  
+                  <div>
+                    <Label htmlFor="select-personnel">Select Personnel *</Label>
+                    <SearchableSelect
+                      id="select-personnel"
+                      options={personnelOptions}
+                      value={selectedPersonnelId as string}
+                      onValueChange={(value) => setSelectedPersonnelId(value as Id<"personnel">)}
+                      placeholder="Choose personnel"
+                      searchPlaceholder="Search personnel..."
+                      emptyMessage="No personnel found."
+                      disabled={isAwarding}
+                      className="mt-1"
+                    />
+                  </div>
 
-                <div>
-                  <Label htmlFor="award-notes">Notes (Optional)</Label>
-                  <Input
-                    id="award-notes"
-                    placeholder="e.g., Completed at training event..."
-                    value={awardNotes}
-                    onChange={(e) => setAwardNotes(e.target.value)}
-                    disabled={isAwarding}
-                    className="mt-1"
-                  />
+                  <div>
+                    <Label htmlFor="award-notes">Notes (Optional)</Label>
+                    <Input
+                      id="award-notes"
+                      placeholder="e.g., Completed at training event..."
+                      value={awardNotes}
+                      onChange={(e) => setAwardNotes(e.target.value)}
+                      disabled={isAwarding}
+                      className="mt-1"
+                    />
+                  </div>
                 </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  variant="outline"
-                  onClick={() => setAwardModalOpen(false)}
-                  disabled={isAwarding}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={handleAwardQualification}
-                  disabled={isAwarding || !selectedQualificationId || !selectedPersonnelId}
-                >
-                  {isAwarding ? "Awarding..." : "Award Qualification"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-              </Dialog>
+              </FormDialog>
             </>
           )}
           
           {canManageQualifications && (
-            <Dialog open={addQualificationOpen} onOpenChange={(open) => {
-              setAddQualificationOpen(open)
-              if (!open) {
-                setNewQualName("")
-                setNewQualAbbr("")
-                setNewQualSchoolId("")
-              }
-            }}>
-              <DialogTrigger asChild>
-                <Button variant="default" size="lg">
-                  <Plus className="w-5 h-5 mr-2" />
-                  Add Qualification
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Add New Qualification</DialogTitle>
-                  <DialogDescription>
-                    Create a new qualification and assign it to a school
-                  </DialogDescription>
-                </DialogHeader>
+            <>
+              <Button 
+                variant="default" 
+                size="lg"
+                onClick={() => setAddQualificationOpen(true)}
+              >
+                <Plus className="w-5 h-5 mr-2" />
+                Add Qualification
+              </Button>
+              
+              <FormDialog
+                open={addQualificationOpen}
+                onOpenChange={(open) => {
+                  setAddQualificationOpen(open)
+                  if (!open) {
+                    setNewQualName("")
+                    setNewQualAbbr("")
+                    setNewQualSchoolId("")
+                    setFormError(null)
+                  }
+                }}
+                title="Add New Qualification"
+                description="Create a new qualification and assign it to a school"
+                onSubmit={handleCreateQualification}
+                submitText="Create Qualification"
+                isSubmitting={isSubmitting}
+                error={formError}
+                disabled={schoolOptions.length === 0}
+              >
                 {schoolOptions.length === 0 ? (
                   <div className="py-8 text-center">
                     <p className="text-muted-foreground">
@@ -634,25 +606,8 @@ export default function QualificationsPage() {
                     </div>
                   </div>
                 )}
-                <DialogFooter>
-                  <Button
-                    variant="outline"
-                    onClick={() => setAddQualificationOpen(false)}
-                    disabled={isSubmitting}
-                  >
-                    Cancel
-                  </Button>
-                  {schoolOptions.length > 0 && (
-                    <Button
-                      onClick={handleCreateQualification}
-                      disabled={isSubmitting}
-                    >
-                      {isSubmitting ? "Creating..." : "Create Qualification"}
-                    </Button>
-                  )}
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
+              </FormDialog>
+            </>
           )}
         </div>
       </div>
@@ -763,16 +718,34 @@ export default function QualificationsPage() {
             open={openSchools[school._id]}
             onOpenChange={() => toggleSchool(school._id)}
           >
-            <Card variant="depth">
+            <Card variant="depth" className="border-l-4" style={{ 
+              borderLeftColor: school.color ? getThemeAwareColor(school.color, isDarkMode) : undefined 
+            }}>
               <CollapsibleTrigger asChild>
                 <CardHeader className="cursor-pointer hover:bg-muted/10 transition-colors">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="p-2 rounded-lg bg-primary/20 backdrop-blur-sm">
-                        <Award className="w-6 h-6 text-primary" />
+                      <div 
+                        className="p-2 rounded-lg backdrop-blur-sm border" 
+                        style={{
+                          backgroundColor: school.color ? getSchoolColorStyles(school.color, isDarkMode).backgroundColor : undefined,
+                          borderColor: school.color ? getSchoolColorStyles(school.color, isDarkMode).borderColor : undefined,
+                        }}
+                      >
+                        <Award 
+                          className="w-6 h-6" 
+                          style={{ 
+                            color: school.color ? getThemeAwareColor(school.color, isDarkMode) : undefined 
+                          }} 
+                        />
                       </div>
                       <div>
-                        <CardTitle className="text-xl text-primary">
+                        <CardTitle 
+                          className="text-xl" 
+                          style={{ 
+                            color: school.color ? getThemeAwareColor(school.color, isDarkMode) : undefined 
+                          }}
+                        >
                           {school.name}
                         </CardTitle>
                         <CardDescription className="text-sm">
@@ -781,7 +754,11 @@ export default function QualificationsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="flex items-center gap-1">
+                      <Badge 
+                        variant="secondary" 
+                        className="flex items-center gap-1 border"
+                        style={school.color ? getSchoolColorStyles(school.color, isDarkMode) : undefined}
+                      >
                         <Users className="w-3 h-3" />
                         {totalAwarded}
                       </Badge>
@@ -1018,7 +995,10 @@ export default function QualificationsPage() {
                         <div className="font-medium">{qual.name}</div>
                       </TableCell>
                       <TableCell>
-                        <Badge className="bg-gray-700 text-white">
+                        <Badge 
+                          className="border" 
+                          style={getSchoolColorStyles(school?.color, isDarkMode)}
+                        >
                           {school?.name}
                         </Badge>
                       </TableCell>
@@ -1072,7 +1052,10 @@ export default function QualificationsPage() {
                       <div className="flex-1">
                         <div className="font-semibold text-lg">{qual.name}</div>
                         <div className="flex gap-2 mt-2">
-                          <Badge className="bg-gray-700 text-white text-xs">
+                          <Badge 
+                            className="border text-xs" 
+                            style={getSchoolColorStyles(school?.color, isDarkMode)}
+                          >
                             {school?.name}
                           </Badge>
                           <Badge variant="outline" className="text-xs">
@@ -1290,77 +1273,64 @@ export default function QualificationsPage() {
       </Dialog>
 
       {/* Edit Qualification Dialog */}
-      <Dialog open={editQualificationOpen} onOpenChange={(open) => {
-        setEditQualificationOpen(open)
-        if (!open) {
-          setEditingQual(null)
-          setEditQualName("")
-          setEditQualAbbr("")
-          setEditQualSchoolId("")
-        }
-      }}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit Qualification</DialogTitle>
-            <DialogDescription>
-              Update qualification details
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="edit-qual-name">Qualification Name *</Label>
-              <Input
-                id="edit-qual-name"
-                placeholder="e.g., Basic Infantry Training"
-                value={editQualName}
-                onChange={(e) => setEditQualName(e.target.value)}
-                disabled={isEditSubmitting}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="edit-qual-abbr">Abbreviation *</Label>
-              <Input
-                id="edit-qual-abbr"
-                placeholder="e.g., BIT"
-                value={editQualAbbr}
-                onChange={(e) => setEditQualAbbr(e.target.value)}
-                disabled={isEditSubmitting}
-              />
-            </div>
-            
-            <div>
-              <Label htmlFor="edit-qual-school">School *</Label>
-              <SearchableSelect
-                id="edit-qual-school"
-                options={schoolOptions}
-                value={editQualSchoolId as string}
-                onValueChange={(value) => setEditQualSchoolId(value as Id<"schools">)}
-                placeholder="Select a school"
-                searchPlaceholder="Search schools..."
-                emptyMessage="No schools found."
-                disabled={isEditSubmitting}
-                className="mt-1"
-              />
-            </div>
+      <FormDialog
+        open={editQualificationOpen}
+        onOpenChange={(open) => {
+          setEditQualificationOpen(open)
+          if (!open) {
+            setEditingQual(null)
+            setEditQualName("")
+            setEditQualAbbr("")
+            setEditQualSchoolId("")
+            setEditFormError(null)
+          }
+        }}
+        title="Edit Qualification"
+        description="Update qualification details"
+        onSubmit={handleUpdateQualification}
+        submitText="Update Qualification"
+        isSubmitting={isEditSubmitting}
+        error={editFormError}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="edit-qual-name">Qualification Name *</Label>
+            <Input
+              id="edit-qual-name"
+              placeholder="e.g., Basic Infantry Training"
+              value={editQualName}
+              onChange={(e) => setEditQualName(e.target.value)}
+              disabled={isEditSubmitting}
+            />
           </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setEditQualificationOpen(false)}
+          
+          <div>
+            <Label htmlFor="edit-qual-abbr">Abbreviation *</Label>
+            <Input
+              id="edit-qual-abbr"
+              placeholder="e.g., BIT"
+              value={editQualAbbr}
+              onChange={(e) => setEditQualAbbr(e.target.value)}
               disabled={isEditSubmitting}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleUpdateQualification}
+            />
+          </div>
+          
+          <div>
+            <Label htmlFor="edit-qual-school">School *</Label>
+            <SearchableSelect
+              id="edit-qual-school"
+              options={schoolOptions}
+              value={editQualSchoolId as string}
+              onValueChange={(value) => setEditQualSchoolId(value as Id<"schools">)}
+              placeholder="Select a school"
+              searchPlaceholder="Search schools..."
+              emptyMessage="No schools found."
               disabled={isEditSubmitting}
-            >
-              {isEditSubmitting ? "Updating..." : "Update Qualification"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              className="mt-1"
+            />
+          </div>
+        </div>
+      </FormDialog>
     </div>
   )
 }

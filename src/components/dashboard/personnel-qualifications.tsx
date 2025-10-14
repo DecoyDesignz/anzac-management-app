@@ -7,8 +7,9 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { CheckCircle2, Circle, Award, ChevronDown, ChevronRight, X } from "lucide-react"
 import { useState } from "react"
-import { cn } from "@/lib/utils"
+import { cn, getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { Id } from "../../../convex/_generated/dataModel"
+import { useTheme } from "@/providers/theme-provider"
 
 interface PersonnelQualificationsProps {
   personnelId: string
@@ -22,6 +23,8 @@ export function PersonnelQualifications({
   onRemove 
 }: PersonnelQualificationsProps) {
   const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set())
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
   
   const personnel = useQuery(api.personnel.getPersonnelDetails, { 
     personnelId: personnelId as Id<"personnel"> 
@@ -81,12 +84,12 @@ export function PersonnelQualifications({
     return (
       <div className="space-y-3">
         {/* Overall Summary */}
-        <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30">
+        <div className="flex items-center justify-between p-3 rounded-lg bg-gradient-to-r from-primary/10 to-primary/5 border border-primary/20">
           <div className="flex items-center gap-2">
             <Award className="w-5 h-5 text-primary" />
             <span className="font-medium">Total Qualifications</span>
           </div>
-          <Badge variant="secondary" className="text-base">
+          <Badge className="text-base px-3 py-1" style={{ backgroundColor: '#6B7280', color: '#FFFFFF' }}>
             {totalEarned} / {totalAvailable}
           </Badge>
         </div>
@@ -97,11 +100,11 @@ export function PersonnelQualifications({
             const isExpanded = expandedSchools.has(school._id)
             
             return (
-              <div key={school._id} className="border rounded-lg overflow-hidden">
+              <div key={school._id} className="border rounded-lg overflow-hidden bg-card/50">
                 {/* School Header */}
                 <button
                   onClick={() => toggleSchool(school._id)}
-                  className="w-full flex items-center justify-between p-3 hover:bg-muted/50 transition-colors"
+                  className="w-full flex items-center justify-between p-3 hover:bg-card/80 transition-colors group"
                 >
                   <div className="flex items-center gap-3 flex-1">
                     {isExpanded ? (
@@ -109,10 +112,21 @@ export function PersonnelQualifications({
                     ) : (
                       <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     )}
-                    <div className="text-left">
-                      <div className="font-medium text-sm">{school.name}</div>
+                    <div 
+                      className="w-1 h-8 rounded-full shrink-0"
+                      style={{ backgroundColor: getThemeAwareColor(school.color || '#6B7280', isDarkMode) }}
+                    />
+                    <div className="text-left flex-1">
+                      <div 
+                        className="font-semibold text-sm school-title-light-shadow"
+                        style={{ 
+                          color: getThemeAwareColor(school.color || '#6B7280', isDarkMode)
+                        }}
+                      >
+                        {school.name}
+                      </div>
                       <div className="text-xs text-muted-foreground">
-                        <span className="text-military-blue">{earnedCount}</span> of <span className="text-military-cyan">{totalCount}</span> qualifications
+                        {earnedCount} of {totalCount} qualifications
                       </div>
                     </div>
                   </div>
@@ -121,8 +135,11 @@ export function PersonnelQualifications({
                   <div className="flex items-center gap-3 min-w-[120px]">
                     <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
                       <div 
-                        className="h-full bg-primary transition-all duration-300"
-                        style={{ width: `${percentage}%` }}
+                        className="h-full transition-all duration-300"
+                        style={{ 
+                          backgroundColor: getThemeAwareColor(school.color || '#6B7280', isDarkMode),
+                          width: `${percentage}%` 
+                        }}
                       />
                     </div>
                     <span className="text-xs font-medium text-muted-foreground w-10 text-right">
@@ -135,13 +152,12 @@ export function PersonnelQualifications({
                 {isExpanded && (
                   <div className="border-t bg-muted/20 p-3 space-y-2">
                     {qualifications.map(qual => {
-                      // Since we only show earned qualifications now, all should have green styling
                       const qualData = personnel.qualifications?.find(q => q._id === qual._id)
                       
                       return (
                         <div 
                           key={qual._id}
-                          className="flex items-start justify-between p-2 rounded-md transition-colors group"
+                          className="flex items-start justify-between p-2 rounded-md transition-colors group hover:bg-muted/50"
                         >
                           <div className="flex items-start gap-2 flex-1">
                             <CheckCircle2 className="w-4 h-4 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
@@ -155,7 +171,14 @@ export function PersonnelQualifications({
                             </div>
                           </div>
                           <div className="flex items-center gap-2">
-                            <Badge variant="secondary" className="text-xs">
+                            <Badge 
+                              className="text-xs"
+                              style={{
+                                backgroundColor: getThemeAwareColor(school.color || '#6B7280', isDarkMode),
+                                color: getTextColor(getThemeAwareColor(school.color || '#6B7280', isDarkMode)),
+                                border: 'none'
+                              }}
+                            >
                               {qual.abbreviation}
                             </Badge>
                             {onRemove && (
@@ -194,31 +217,59 @@ export function PersonnelQualifications({
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {qualificationsBySchool.map(({ school, qualifications, earnedCount, totalCount }) => (
-        <div key={school._id} className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h4 className="text-sm font-semibold text-primary flex items-center gap-2">
-              {school.name}
-              <Badge variant="outline" className="ml-auto">
-                {earnedCount} / {totalCount}
-              </Badge>
-            </h4>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {qualifications.map(qual => {
-              // Since we only show earned qualifications now, all badges should be earned
-              return (
-                <Badge
-                  key={qual._id}
-                  variant="default"
-                  className="flex items-center gap-1.5 bg-primary/90"
+        <div key={school._id} className="group">
+          {/* School Header with Integrated Qualifications */}
+          <div className="flex items-center justify-between p-3 rounded-lg border border-border/50 bg-card/50 hover:bg-card/80 transition-all duration-200">
+            <div className="flex-1">
+              {/* School Name with Progress */}
+              <div className="flex items-center gap-3 mb-2">
+                <h4 
+                  className="text-sm font-bold flex items-center gap-2 school-title-light-shadow"
+                  style={{ 
+                    color: getThemeAwareColor(school.color || '#6B7280', isDarkMode)
+                  }}
                 >
-                  <CheckCircle2 className="w-3 h-3" />
-                  {qual.abbreviation}
+                  {school.name}
+                </h4>
+                <Badge 
+                  variant="outline" 
+                  className="text-xs"
+                  style={{
+                    backgroundColor: school.color ? `${getThemeAwareColor(school.color, isDarkMode)}20` : '#6B728020',
+                    borderColor: getThemeAwareColor(school.color || '#6B7280', isDarkMode),
+                    color: getThemeAwareColor(school.color || '#6B7280', isDarkMode)
+                  }}
+                >
+                  {earnedCount} / {totalCount}
                 </Badge>
-              )
-            })}
+              </div>
+              
+              {/* Qualifications as inline badges */}
+              <div className="flex flex-wrap gap-1.5">
+                {qualifications.map(qual => (
+                  <Badge
+                    key={qual._id}
+                    className="flex items-center gap-1.5 text-xs px-2 py-1"
+                    style={{
+                      backgroundColor: getThemeAwareColor(school.color || '#6B7280', isDarkMode),
+                      color: getTextColor(getThemeAwareColor(school.color || '#6B7280', isDarkMode)),
+                      border: 'none'
+                    }}
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    {qual.abbreviation}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+            
+            {/* School Color Indicator */}
+            <div 
+              className="w-1 h-12 rounded-full ml-3 shrink-0"
+              style={{ backgroundColor: getThemeAwareColor(school.color || '#6B7280', isDarkMode) }}
+            />
           </div>
         </div>
       ))}

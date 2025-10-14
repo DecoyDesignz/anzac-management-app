@@ -222,21 +222,21 @@ export function Sidebar() {
           {/* Theme Toggle - Only render after mounting to avoid hydration mismatch */}
           {mounted && (
             <button
-              onClick={() => setTheme(theme === 'military' ? 'light' : 'military')}
+              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
               className={cn(
                 "w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-primary/5 transition-all duration-300",
                 isCollapsed && "justify-center"
               )}
-              title={theme === 'military' ? 'Switch to Light Mode' : 'Switch to Military Mode'}
+              title={theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
             >
-              {theme === 'military' ? (
+              {theme === 'dark' ? (
                 <Sun className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
               ) : (
                 <Moon className="w-5 h-5 text-muted-foreground hover:text-primary transition-colors" />
               )}
               {!isCollapsed && (
                 <span className="text-sm font-medium text-muted-foreground">
-                  {theme === 'military' ? 'Light Mode' : 'Dark Mode'}
+                  {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
                 </span>
               )}
             </button>

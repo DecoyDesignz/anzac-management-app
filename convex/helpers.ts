@@ -2,19 +2,20 @@ import { QueryCtx, MutationCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 
 // Role hierarchy for permission checking
-export type UserRole = "super_admin" | "administrator" | "game_master" | "instructor";
+export type UserRole = "super_admin" | "administrator" | "game_master" | "instructor" | "member";
 
 const roleHierarchy: Record<UserRole, number> = {
-  super_admin: 4,
-  administrator: 3,
-  instructor: 2,
-  game_master: 1,
+  super_admin: 5,
+  administrator: 4,
+  instructor: 3,
+  game_master: 2,
+  member: 1,
 };
 
 /**
- * Get a user by their ID
+ * Get a personnel member by their ID
  */
-export async function getUser(ctx: QueryCtx | MutationCtx, userId: Id<"systemUsers">) {
+export async function getUser(ctx: QueryCtx | MutationCtx, userId: Id<"personnel">) {
   return await ctx.db.get(userId);
 }
 
@@ -37,7 +38,7 @@ export async function requireAuth(ctx: QueryCtx | MutationCtx): Promise<any> {
   // TODO: Verify NextAuth JWT token
   // For now, we rely on Next.js middleware for authentication
   // This should be called from authenticated routes only
-  return { _id: "" as Id<"systemUsers">, role: "administrator" as UserRole, isActive: true, email: "", name: "", requirePasswordChange: false };
+  return { _id: "" as Id<"personnel">, role: "administrator" as UserRole, isActive: true, email: "", callSign: "", requirePasswordChange: false };
 }
 
 /**
@@ -50,7 +51,7 @@ export async function requireRole(
 ): Promise<any> {
   // TODO: Verify user role from NextAuth session
   // For now, we rely on Next.js middleware for authorization
-  return { _id: "" as Id<"systemUsers">, role: minimumRole, isActive: true, email: "", name: "", requirePasswordChange: false };
+  return { _id: "" as Id<"personnel">, role: minimumRole, isActive: true, email: "", callSign: "", requirePasswordChange: false };
 }
 
 /**
@@ -61,40 +62,42 @@ export async function requireRole(
  */
 export async function canAwardQualification(
   ctx: QueryCtx | MutationCtx,
-  userId: Id<"systemUsers">,
+  personnelId: Id<"personnel">,
   qualificationId: Id<"qualifications">
 ): Promise<boolean> {
   // TODO: Remove this check once proper auth is implemented
-  // If userId is empty (placeholder auth), allow the operation since auth is handled by middleware
-  if (!userId || userId === ("" as Id<"systemUsers">)) {
+  // If personnelId is empty (placeholder auth), allow the operation since auth is handled by middleware
+  if (!personnelId || personnelId === ("" as Id<"personnel">)) {
     return true;
   }
 
-  const user = await ctx.db.get(userId);
-  if (!user || !user.isActive) {
+  const person = await ctx.db.get(personnelId);
+  if (!person || !person.isActive) {
     return false;
   }
 
   // Get user roles
-  const userRoles = await ctx.db
+  const personnelRoles = await ctx.db
     .query("userRoles")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .withIndex("by_personnel", (q) => q.eq("personnelId", personnelId))
     .collect();
 
-  const roles = userRoles.map(ur => ur.role);
+  const roles = await ctx.db.query("roles").collect();
+  const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+  const roleNames = personnelRoles.map(ur => ur.roleId ? roleMap.get(ur.roleId) : null).filter(Boolean);
 
   // Super admins and administrators can award any qualification
-  if (roles.includes("super_admin") || roles.includes("administrator")) {
+  if (roleNames.includes("super_admin") || roleNames.includes("administrator")) {
     return true;
   }
 
-  // Game masters cannot award qualifications
-  if (roles.includes("game_master")) {
+  // Game masters and members cannot award qualifications
+  if (roleNames.includes("game_master") || roleNames.includes("member")) {
     return false;
   }
 
   // For instructors, check if they're assigned to the qualification's school
-  if (roles.includes("instructor")) {
+  if (roleNames.includes("instructor")) {
     const qualification = await ctx.db.get(qualificationId);
     if (!qualification) {
       return false;
@@ -103,8 +106,8 @@ export async function canAwardQualification(
     // Check if instructor is assigned to this school
     const assignment = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user_and_school", (q) =>
-        q.eq("userId", userId).eq("schoolId", qualification.schoolId)
+      .withIndex("by_personnel_and_school", (q) =>
+        q.eq("personnelId", personnelId).eq("schoolId", qualification.schoolId)
       )
       .first();
 
@@ -119,11 +122,11 @@ export async function canAwardQualification(
  */
 export async function getInstructorSchools(
   ctx: QueryCtx,
-  userId: Id<"systemUsers">
+  personnelId: Id<"personnel">
 ): Promise<Id<"schools">[]> {
   const assignments = await ctx.db
     .query("instructorSchools")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .withIndex("by_personnel", (q) => q.eq("personnelId", personnelId))
     .collect();
 
   return assignments.map((a) => a.schoolId);
@@ -137,44 +140,46 @@ export async function getInstructorSchools(
  */
 export async function canManageSchool(
   ctx: QueryCtx | MutationCtx,
-  userId: Id<"systemUsers">,
+  personnelId: Id<"personnel">,
   schoolId: Id<"schools">
 ): Promise<boolean> {
   // TODO: Remove this check once proper auth is implemented
-  // If userId is empty (placeholder auth), allow the operation since auth is handled by middleware
-  if (!userId || userId === ("" as Id<"systemUsers">)) {
+  // If personnelId is empty (placeholder auth), allow the operation since auth is handled by middleware
+  if (!personnelId || personnelId === ("" as Id<"personnel">)) {
     return true;
   }
 
-  const user = await ctx.db.get(userId);
-  if (!user || !user.isActive) {
+  const person = await ctx.db.get(personnelId);
+  if (!person || !person.isActive) {
     return false;
   }
 
-  // Get user roles
-  const userRoles = await ctx.db
+  // Get personnel roles
+  const personnelRoles = await ctx.db
     .query("userRoles")
-    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .withIndex("by_personnel", (q) => q.eq("personnelId", personnelId))
     .collect();
 
-  const roles = userRoles.map(ur => ur.role);
+  const roles = await ctx.db.query("roles").collect();
+  const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+  const roleNames = personnelRoles.map(ur => ur.roleId ? roleMap.get(ur.roleId) : null).filter(Boolean);
 
   // Super admins and administrators can manage any school
-  if (roles.includes("super_admin") || roles.includes("administrator")) {
+  if (roleNames.includes("super_admin") || roleNames.includes("administrator")) {
     return true;
   }
 
-  // Game masters cannot manage schools
-  if (roles.includes("game_master")) {
+  // Game masters and members cannot manage schools
+  if (roleNames.includes("game_master") || roleNames.includes("member")) {
     return false;
   }
 
   // For instructors, check if they're assigned to this school
-  if (roles.includes("instructor")) {
+  if (roleNames.includes("instructor")) {
     const assignment = await ctx.db
       .query("instructorSchools")
-      .withIndex("by_user_and_school", (q) =>
-        q.eq("userId", userId).eq("schoolId", schoolId)
+      .withIndex("by_personnel_and_school", (q) =>
+        q.eq("personnelId", personnelId).eq("schoolId", schoolId)
       )
       .first();
 
@@ -200,6 +205,7 @@ export function formatRole(role: UserRole): string {
     administrator: "Administrator",
     game_master: "Game Master",
     instructor: "Instructor",
+    member: "Member",
   };
   return roleMap[role];
 }

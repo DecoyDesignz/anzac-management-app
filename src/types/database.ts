@@ -3,15 +3,25 @@
 
 import { Id } from "../../convex/_generated/dataModel";
 
-export type UserRole = "super_admin" | "administrator" | "game_master" | "instructor";
+export type UserRole = "super_admin" | "administrator" | "game_master" | "instructor" | "member";
 
-export interface User {
-  _id: Id<"systemUsers">
-  email?: string // Optional - username is primary identifier
-  name: string // Username
-  role: UserRole
-  isActive: boolean
-  requirePasswordChange: boolean
+export interface Personnel {
+  _id: Id<"personnel">
+  // Personnel fields (always present)
+  callSign: string // Username/callsign
+  firstName?: string
+  lastName?: string
+  email?: string
+  phone?: string
+  rankId?: Id<"ranks">
+  status: "active" | "inactive" | "leave" | "discharged"
+  joinDate: number
+  dischargeDate?: number
+  notes?: string
+  // System access fields (optional)
+  passwordHash?: string
+  isActive?: boolean
+  requirePasswordChange?: boolean
   lastPasswordChange?: number
   _creationTime: number
 }
@@ -27,19 +37,8 @@ export interface School {
 
 export interface InstructorSchool {
   _id: Id<"instructorSchools">
-  userId: Id<"systemUsers">
+  personnelId: Id<"personnel">
   schoolId: Id<"schools">
-  _creationTime: number
-}
-
-export interface Personnel {
-  _id: Id<"personnel">
-  callSign: string // Username/callsign only
-  rankId: Id<"ranks">
-  status: "active" | "inactive" | "leave" | "discharged"
-  joinDate: number
-  dischargeDate?: number
-  notes?: string
   _creationTime: number
 }
 
@@ -68,7 +67,7 @@ export interface PersonnelQualification {
   qualificationId: Id<"qualifications">
   awardedDate: number
   expiryDate?: number
-  awardedBy: Id<"systemUsers">
+  awardedBy?: Id<"personnel">
   notes?: string
   _creationTime: number
 }
@@ -78,7 +77,7 @@ export interface RankHistory {
   personnelId: Id<"personnel">
   rankId: Id<"ranks">
   promotionDate: number
-  promotedBy?: Id<"systemUsers">
+  promotedBy?: Id<"personnel">
   notes?: string
   _creationTime: number
 }

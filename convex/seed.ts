@@ -19,45 +19,59 @@ export const seedDatabaseInternal = internalMutation({
       throw new Error("Database already seeded. Clear the database before reseeding.");
     }
 
-    // 1. Create schools
+    // 1. Create schools with colors
     const pilotSchool = await ctx.db.insert("schools", {
-      name: "Pilot School",
+      name: "Aviation School",
       abbreviation: "PILOT",
+      color: "#992d22",
     });
 
     const infantrySchool = await ctx.db.insert("schools", {
       name: "Infantry School",
       abbreviation: "INF",
+      color: "#6b7280",
     });
 
     const armourSchool = await ctx.db.insert("schools", {
       name: "Armour School",
       abbreviation: "ARM",
+      color: "#3b82f6",
     });
 
     const sapperSchool = await ctx.db.insert("schools", {
       name: "Sapper School",
       abbreviation: "SAP",
+      color: "#ff5500",
+    });
+
+    const artillerySchool = await ctx.db.insert("schools", {
+      name: "Artillery School",
+      abbreviation: "ART",
+      color: "#6adae0",
     });
 
     const medicalSchool = await ctx.db.insert("schools", {
       name: "Medical School",
       abbreviation: "MED",
+      color: "#dc2626",
     });
 
     const technicalSchool = await ctx.db.insert("schools", {
       name: "Technical School",
       abbreviation: "TECH",
+      color: "#16a34a",
     });
 
     const specializedSchool = await ctx.db.insert("schools", {
       name: "Specialized School",
       abbreviation: "SPEC",
+      color: "#e91e63",
     });
 
     const leadershipSchool = await ctx.db.insert("schools", {
       name: "Leadership School",
       abbreviation: "LEAD",
+      color: "#ea580c",
     });
 
     // 2. Create ranks (Australian military structure)
@@ -110,9 +124,13 @@ export const seedDatabaseInternal = internalMutation({
       { name: "Diver", abbreviation: "DIVER", schoolId: specializedSchool },
       { name: "Pathfinder", abbreviation: "PATH", schoolId: specializedSchool },
       
-      // Pilot School
+      // Aviation School (formerly Pilot School)
       { name: "Rotary Wing Pilot", abbreviation: "RWP", schoolId: pilotSchool },
       { name: "Fixed Wing Pilot", abbreviation: "FWP", schoolId: pilotSchool },
+      
+      // Artillery School
+      { name: "Artillery Forward Observer", abbreviation: "AFO", schoolId: artillerySchool },
+      { name: "Artillery Gunner", abbreviation: "AGUN", schoolId: artillerySchool },
       
       // Armour School
       { name: "Armoured Vehicle Crew", abbreviation: "AVC", schoolId: armourSchool },
@@ -158,38 +176,82 @@ export const seedDatabaseInternal = internalMutation({
       await ctx.db.insert("servers", server);
     }
 
-    // 6. Create super admin with hashed password
-    const superAdminId = await ctx.db.insert("systemUsers", {
-      name: "admin",
+    // 6. Create super admin personnel with system access
+    const privateRank = await ctx.db
+      .query("ranks")
+      .filter((q) => q.eq(q.field("abbreviation"), "PTE"))
+      .first();
+    
+    const superAdminId = await ctx.db.insert("personnel", {
+      callSign: "admin",
+      status: "active",
+      joinDate: Date.now(),
+      rankId: privateRank?._id,
       passwordHash: args.passwordHash,
       isActive: true,
       requirePasswordChange: false,
       lastPasswordChange: Date.now(),
     });
 
+    // Create system roles
+    const superAdminRole = await ctx.db.insert("roles", {
+      roleName: "super_admin",
+      displayName: "Super Admin",
+      color: "#FF0000", // Bright Red (Game Admin)
+      description: "Full system access and administration privileges"
+    });
+    
+    const adminRole = await ctx.db.insert("roles", {
+      roleName: "administrator", 
+      displayName: "Administrator",
+      color: "#FF0000", // Bright Red (Game Admin)
+      description: "Can manage most system features"
+    });
+    
+    const gameMasterRole = await ctx.db.insert("roles", {
+      roleName: "game_master",
+      displayName: "Game Master", 
+      color: "#800080", // Medium Purple (GM)
+      description: "Can manage events and attendance"
+    });
+    
+    const instructorRole = await ctx.db.insert("roles", {
+      roleName: "instructor",
+      displayName: "Instructor",
+      color: "#FFA500", // Golden Orange (Instructor)
+      description: "Can award qualifications"
+    });
+    
+    const memberRole = await ctx.db.insert("roles", {
+      roleName: "member",
+      displayName: "Member",
+      color: "#6B7280", // Gray (Default for members)
+      description: "Read-only access to calendar and own records"
+    });
+
     // Create user roles for super admin (has all roles)
     await ctx.db.insert("userRoles", {
-      userId: superAdminId,
-      role: "super_admin",
+      personnelId: superAdminId,
+      roleId: superAdminRole,
     });
     await ctx.db.insert("userRoles", {
-      userId: superAdminId,
-      role: "administrator",
+      personnelId: superAdminId,
+      roleId: adminRole,
     });
     await ctx.db.insert("userRoles", {
-      userId: superAdminId,
-      role: "game_master",
+      personnelId: superAdminId,
+      roleId: gameMasterRole,
     });
     await ctx.db.insert("userRoles", {
-      userId: superAdminId,
-      role: "instructor",
+      personnelId: superAdminId,
+      roleId: instructorRole,
     });
 
     return {
       success: true,
       message: "Database seeded successfully including super admin account!",
       stats: {
-        schools: 8,
+        schools: 9,
         ranks: ranks.length,
         qualifications: qualifications.length,
         eventTypes: eventTypes.length,
@@ -209,10 +271,13 @@ export const initializeSuperAdmin = mutation({
   },
   handler: async (ctx, args) => {
     // Check if super admin already exists
-    const existingSuperAdmin = await ctx.db
+    const allRoles = await ctx.db.query("roles").collect();
+    const existingSuperAdminRole = allRoles.find(r => r.roleName === "super_admin");
+    
+    const existingSuperAdmin = existingSuperAdminRole ? await ctx.db
       .query("userRoles")
-      .withIndex("by_role", (q) => q.eq("role", "super_admin"))
-      .first();
+      .withIndex("by_role", (q) => q.eq("roleId", existingSuperAdminRole._id))
+      .first() : null;
     
     if (existingSuperAdmin) {
       throw new Error("Super admin account already exists");
@@ -223,29 +288,42 @@ export const initializeSuperAdmin = mutation({
       throw new Error("Only 'admin' username can be initialized as super admin");
     }
 
-    // Check if user record already exists
-    const existingUser = await ctx.db
-      .query("systemUsers")
-      .withIndex("by_name", (q) => q.eq("name", args.username))
+    // Check if personnel record already exists
+    const existingPerson = await ctx.db
+      .query("personnel")
+      .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
       .first();
 
-    if (existingUser) {
-      throw new Error("User record already exists");
+    if (existingPerson) {
+      throw new Error("Personnel record already exists");
     }
 
-    // Create the super admin user record
-    const userId = await ctx.db.insert("systemUsers", {
-      name: args.username,
+    // Get default rank
+    const privateRank = await ctx.db
+      .query("ranks")
+      .filter((q) => q.eq(q.field("abbreviation"), "PTE"))
+      .first();
+
+    // Create the super admin personnel record
+    const userId = await ctx.db.insert("personnel", {
+      callSign: args.username,
+      status: "active",
+      joinDate: Date.now(),
+      rankId: privateRank?._id,
       isActive: true,
       requirePasswordChange: false,
       lastPasswordChange: Date.now(),
     });
 
-    // Create super admin role
-    await ctx.db.insert("userRoles", {
-      userId,
-      role: "super_admin",
-    });
+    // Get super admin role
+    const superAdminRole = allRoles.find(r => r.roleName === "super_admin");
+    
+    if (superAdminRole) {
+      await ctx.db.insert("userRoles", {
+        personnelId: userId,
+        roleId: superAdminRole._id,
+      });
+    }
 
     return {
       success: true,
@@ -262,10 +340,14 @@ export const initializeSuperAdmin = mutation({
 export const checkSuperAdminExists = internalQuery({
   args: {},
   handler: async (ctx) => {
-    const existingSuperAdmin = await ctx.db
+    const roles = await ctx.db.query("roles").collect();
+    const superAdminRole = roles.find(r => r.roleName === "super_admin");
+    
+    const existingSuperAdmin = superAdminRole ? await ctx.db
       .query("userRoles")
-      .withIndex("by_role", (q) => q.eq("role", "super_admin"))
-      .first();
+      .withIndex("by_role", (q) => q.eq("roleId", superAdminRole._id))
+      .first() : null;
+      
     return !!existingSuperAdmin;
   },
 });
@@ -273,18 +355,37 @@ export const checkSuperAdminExists = internalQuery({
 export const createSuperAdmin = internalMutation({
   args: { passwordHash: v.string() },
   handler: async (ctx, args) => {
-    const userId = await ctx.db.insert("systemUsers", {
-      name: "admin",
+    // Get default rank
+    const privateRank = await ctx.db
+      .query("ranks")
+      .filter((q) => q.eq(q.field("abbreviation"), "PTE"))
+      .first();
+    
+    const userId = await ctx.db.insert("personnel", {
+      callSign: "admin",
+      status: "active",
+      joinDate: Date.now(),
+      rankId: privateRank?._id,
       passwordHash: args.passwordHash,
       isActive: true,
       requirePasswordChange: false,
       lastPasswordChange: Date.now(),
     });
 
-    // Create super admin role
+    // Get or create super admin role
+    let superAdminRole = await ctx.db
+      .query("roles")
+      .withIndex("by_role_name", (q) => q.eq("roleName", "super_admin"))
+      .first();
+    
+    if (!superAdminRole) {
+      throw new Error("Super admin role does not exist in the database");
+    }
+
+    // Create super admin role assignment
     await ctx.db.insert("userRoles", {
-      userId,
-      role: "super_admin",
+      personnelId: userId,
+      roleId: superAdminRole._id,
     });
 
     return userId;
@@ -367,10 +468,8 @@ export const clearDatabase = mutation({
       await ctx.db.delete(r._id);
     }
 
-    const users = await ctx.db.query("systemUsers").collect();
-    for (const u of users) {
-      await ctx.db.delete(u._id);
-    }
+    // Note: personnel table now includes system users (with login credentials)
+    // Already deleted above in the personnel loop
 
     return { success: true, message: "Database cleared successfully" };
   },

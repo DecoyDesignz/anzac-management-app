@@ -255,7 +255,7 @@ export const getPersonnelWithQualification = query({
           qualificationDetails: {
             awardedDate: pq.awardedDate,
             expiryDate: pq.expiryDate,
-            awardedBy: awardedBy?.name,
+            awardedBy: awardedBy?.callSign,
             notes: pq.notes,
           },
         };

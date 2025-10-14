@@ -79,11 +79,16 @@ export default function ChangePasswordPage() {
     setError(null)
 
     try {
-      await changePassword({
+      const result = await changePassword({
         username: session.user.name,
         currentPassword: values.currentPassword,
         newPassword: values.newPassword,
       })
+      
+      if (!result.success) {
+        setError(result.error || "Failed to change password")
+        return
+      }
       
       // Redirect to dashboard after successful password change
       router.push("/dashboard")

@@ -19,15 +19,15 @@ export const verifyCredentials = action({
   handler: async (ctx, args): Promise<{
     success: boolean;
     error?: string;
-    user?: Doc<"systemUsers"> & { role?: string };
+    user?: Doc<"personnel"> & { role?: string; name?: string };
   }> => {
     try {
-      // Fetch user from database
-      const user = await ctx.runQuery(api.users.getUserByUsername, { 
+      // Fetch personnel from database by callSign
+      const person = await ctx.runQuery(api.users.getUserByUsername, { 
         username: args.username 
       });
 
-      if (!user) {
+      if (!person) {
         return {
           success: false,
           error: "Invalid username or password"
@@ -35,7 +35,7 @@ export const verifyCredentials = action({
       }
 
       // Verify password
-      if (!user.passwordHash) {
+      if (!person.passwordHash) {
         return {
           success: false,
           error: "Please set up your password first"
@@ -52,7 +52,7 @@ export const verifyCredentials = action({
       });
       const passwordHash = passwordHashBuffer.toString('hex');
       
-      const isValidPassword = passwordHash === user.passwordHash;
+      const isValidPassword = passwordHash === person.passwordHash;
 
       if (!isValidPassword) {
         return {
@@ -61,7 +61,7 @@ export const verifyCredentials = action({
         };
       }
 
-      if (!user.isActive) {
+      if (!person.isActive) {
         return {
           success: false,
           error: "Your account has been deactivated"
@@ -69,28 +69,34 @@ export const verifyCredentials = action({
       }
 
       // Get user's primary role (for backwards compatibility)
-      // Role priority: super_admin > administrator > instructor > game_master
-      const userRoles = await ctx.runQuery(api.users.getUserRoles, { userId: user._id });
+      // Role priority: super_admin > administrator > instructor > game_master > member
+      const userRoles = await ctx.runQuery(api.users.getUserRoles, { userId: person._id });
+      
+      // Extract role names from role objects
+      const roleNames = userRoles.map(role => role.roleName).filter(Boolean);
       
       // Select the highest priority role
       let primaryRole: string | undefined = undefined;
-      if (userRoles.includes("super_admin")) {
+      if (roleNames.includes("super_admin")) {
         primaryRole = "super_admin";
-      } else if (userRoles.includes("administrator")) {
+      } else if (roleNames.includes("administrator")) {
         primaryRole = "administrator";
-      } else if (userRoles.includes("instructor")) {
+      } else if (roleNames.includes("instructor")) {
         primaryRole = "instructor";
-      } else if (userRoles.includes("game_master")) {
+      } else if (roleNames.includes("game_master")) {
         primaryRole = "game_master";
+      } else if (roleNames.includes("member")) {
+        primaryRole = "member";
       } else {
-        primaryRole = userRoles[0];
+        primaryRole = roleNames[0];
       }
 
-      // Return user info
+      // Return personnel info (with name field for compatibility)
       return {
         success: true,
         user: {
-          ...user,
+          ...person,
+          name: person.callSign, // For compatibility with frontend
           role: primaryRole
         }
       };
@@ -105,21 +111,22 @@ export const verifyCredentials = action({
 });
 
 /**
- * Create a new user account with auth credentials (Administrator and Super Admin only)
+ * Create a new personnel account with system access (Administrator and Super Admin only)
  * This is an action because it needs to hash passwords with scrypt
  */
 export const createUserAccount = action({
   args: {
-    name: v.string(), // Username - must be unique
+    name: v.string(), // CallSign - must be unique
     password: v.string(),
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
-      v.literal("instructor")
+      v.literal("instructor"),
+      v.literal("member")
     )),
   },
-  handler: async (ctx, args): Promise<{ success: boolean; userId: Id<"systemUsers"> }> => {
+  handler: async (ctx, args): Promise<{ success: boolean; userId: Id<"personnel"> }> => {
     // Note: This action doesn't have auth context, so we rely on the mutation
     // to do the role checking. Administrators cannot create super_admins.
     
@@ -129,13 +136,13 @@ export const createUserAccount = action({
       throw new Error(validation.errors.join(", "));
     }
 
-    // Check if username already exists
-    const existingUser = await ctx.runQuery(api.users.getUserByUsername, { 
+    // Check if callSign already exists
+    const existingPerson = await ctx.runQuery(api.users.getUserByUsername, { 
       username: args.name 
     });
 
-    if (existingUser) {
-      throw new Error("Username already exists");
+    if (existingPerson) {
+      throw new Error("CallSign already exists");
     }
 
     // Hash password with scrypt
@@ -150,8 +157,8 @@ export const createUserAccount = action({
     });
     const passwordHash = passwordHashBuffer.toString('hex');
 
-    // Create the user
-    const result: { success: boolean; userId: Id<"systemUsers"> } = await ctx.runMutation(internal.users.createUserAccountInternal, {
+    // Create the personnel with system access
+    const result: { success: boolean; userId: Id<"personnel"> } = await ctx.runMutation(internal.users.createUserAccountInternal, {
       name: args.name,
       passwordHash,
       roles: args.roles,
@@ -171,74 +178,101 @@ export const changePassword = action({
     currentPassword: v.string(),
     newPassword: v.string(),
   },
-  handler: async (ctx, args) => {
-    // Get the user by username
-    const currentUser = await ctx.runQuery(api.users.getUserByUsername, { username: args.username });
-    if (!currentUser) {
-      throw new Error("User not found");
-    }
+  handler: async (ctx, args): Promise<{
+    success: boolean;
+    error?: string;
+    message?: string;
+  }> => {
+    try {
+      // Get the user by username
+      const currentUser = await ctx.runQuery(api.users.getUserByUsername, { username: args.username });
+      if (!currentUser) {
+        return {
+          success: false,
+          error: "User not found"
+        };
+      }
 
-    // Type guard to ensure we have a user with required fields
-    if (!currentUser.passwordHash) {
-      throw new Error("No password set for this account");
-    }
+      // Type guard to ensure we have a user with required fields
+      if (!currentUser.passwordHash) {
+        return {
+          success: false,
+          error: "No password set for this account"
+        };
+      }
 
-    // Verify current password
-    const salt = "anzac-management-salt";
-    
-    // Promisify scrypt for async/await
-    const currentPasswordHashBuffer = await new Promise<Buffer>((resolve, reject) => {
-      scrypt(args.currentPassword, salt, 64, (err, derivedKey) => {
-        if (err) reject(err);
-        else resolve(derivedKey);
+      // Verify current password
+      const salt = "anzac-management-salt";
+      
+      // Promisify scrypt for async/await
+      const currentPasswordHashBuffer = await new Promise<Buffer>((resolve, reject) => {
+        scrypt(args.currentPassword, salt, 64, (err, derivedKey) => {
+          if (err) reject(err);
+          else resolve(derivedKey);
+        });
       });
-    });
-    const currentPasswordHash = currentPasswordHashBuffer.toString('hex');
-    
-    const isValidPassword = currentPasswordHash === currentUser.passwordHash;
+      const currentPasswordHash = currentPasswordHashBuffer.toString('hex');
+      
+      const isValidPassword = currentPasswordHash === currentUser.passwordHash;
 
-    if (!isValidPassword) {
-      throw new Error("Current password is incorrect");
-    }
+      if (!isValidPassword) {
+        return {
+          success: false,
+          error: "Current password is incorrect"
+        };
+      }
 
-    // Validate new password
-    const validation = validatePassword(args.newPassword);
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "));
-    }
+      // Validate new password
+      const validation = validatePassword(args.newPassword);
+      if (!validation.isValid) {
+        return {
+          success: false,
+          error: validation.errors.join(", ")
+        };
+      }
 
-    // Hash new password
-    const newPasswordHashBuffer = await new Promise<Buffer>((resolve, reject) => {
-      scrypt(args.newPassword, salt, 64, (err, derivedKey) => {
-        if (err) reject(err);
-        else resolve(derivedKey);
+      // Hash new password
+      const newPasswordHashBuffer = await new Promise<Buffer>((resolve, reject) => {
+        scrypt(args.newPassword, salt, 64, (err, derivedKey) => {
+          if (err) reject(err);
+          else resolve(derivedKey);
+        });
       });
-    });
-    const newPasswordHash = newPasswordHashBuffer.toString('hex');
+      const newPasswordHash = newPasswordHashBuffer.toString('hex');
 
-    // Update password
-    await ctx.runMutation(internal.users.updatePassword, {
-      userId: currentUser._id,
-      newPasswordHash,
-    });
+      // Update password
+      await ctx.runMutation(internal.users.updatePassword, {
+        userId: currentUser._id,
+        newPasswordHash,
+      });
 
-    return { success: true, message: "Password updated successfully" };
+      return { 
+        success: true, 
+        message: "Password updated successfully" 
+      };
+    } catch (error) {
+      console.error("Password change error:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Failed to change password"
+      };
+    }
   },
 });
 
 /**
- * Reset a user's password (Administrator and Super Admin only)
+ * Reset a personnel member's password (Administrator and Super Admin only)
  * This generates a new temporary password and requires the user to change it on next login
  */
 export const resetUserPassword = action({
   args: {
-    userId: v.id("systemUsers"),
+    userId: v.id("personnel"),
   },
   handler: async (ctx, args): Promise<{ success: boolean; temporaryPassword: string }> => {
-    // Get the user
-    const user = await ctx.runQuery(api.users.getUser, { userId: args.userId });
-    if (!user) {
-      throw new Error("User not found");
+    // Get the personnel member
+    const person = await ctx.runQuery(api.users.getUser, { userId: args.userId });
+    if (!person) {
+      throw new Error("Personnel not found");
     }
 
     // Generate a temporary password (16 characters)
@@ -254,7 +288,7 @@ export const resetUserPassword = action({
     });
     const passwordHash = passwordHashBuffer.toString('hex');
 
-    // Update the user's password and flag for password change
+    // Update the personnel's password and flag for password change
     await ctx.runMutation(internal.users.resetPassword, {
       userId: args.userId,
       newPasswordHash: passwordHash,

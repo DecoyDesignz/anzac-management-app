@@ -48,10 +48,11 @@ export const listEvents = query({
 
         const instructorsWithDetails = await Promise.all(
           eventInstructors.map(async (ei) => {
-            const user = await ctx.db.get(ei.userId);
+            if (!ei.personnelId) return { ...ei, user: null };
+            const person = await ctx.db.get(ei.personnelId);
             return {
               ...ei,
-              user,
+              user: person,
             };
           })
         );
@@ -112,10 +113,11 @@ export const getEvent = query({
 
     const instructorsWithDetails = await Promise.all(
       eventInstructors.map(async (ei) => {
-        const user = await ctx.db.get(ei.userId);
+        if (!ei.personnelId) return { ...ei, user: null };
+        const person = await ctx.db.get(ei.personnelId);
         return {
           ...ei,
-          user,
+          user: person,
         };
       })
     );
@@ -158,7 +160,7 @@ export const createEvent = mutation({
     endDate: v.number(),
     eventTypeId: v.optional(v.id("eventTypes")),
     serverId: v.id("servers"),
-    instructorIds: v.array(v.id("systemUsers")),
+    instructorIds: v.array(v.id("personnel")),
     maxParticipants: v.optional(v.number()),
     isRecurring: v.boolean(),
     recurringPattern: v.optional(v.string()),
@@ -188,23 +190,20 @@ export const createEvent = mutation({
         throw new Error("Instructor not found");
       }
 
-      // Check if user has instructor or game_master role
-      const instructorRole = await ctx.db
+      // Check if personnel has instructor or game_master role
+      const userRoles = await ctx.db
         .query("userRoles")
-        .withIndex("by_user_and_role", (q) => 
-          q.eq("userId", instructorId).eq("role", "instructor")
-        )
-        .first();
+        .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
+        .collect();
 
-      const gameMasterRole = await ctx.db
-        .query("userRoles")
-        .withIndex("by_user_and_role", (q) => 
-          q.eq("userId", instructorId).eq("role", "game_master")
-        )
-        .first();
+      const roles = await ctx.db.query("roles").collect();
+      const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+      
+      const hasInstructorRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "instructor");
+      const hasGameMasterRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "game_master");
 
-      if (!instructorRole && !gameMasterRole) {
-        throw new Error("User must be an instructor or game master");
+      if (!hasInstructorRole && !hasGameMasterRole) {
+        throw new Error("Personnel must be an instructor or game master");
       }
     }
 
@@ -229,27 +228,24 @@ export const createEvent = mutation({
 
     // Create event instructor assignments
     for (const instructorId of args.instructorIds) {
-      // Determine role based on user roles
-      const instructorRole = await ctx.db
+      // Determine role based on personnel roles
+      const userRoles = await ctx.db
         .query("userRoles")
-        .withIndex("by_user_and_role", (q) => 
-          q.eq("userId", instructorId).eq("role", "instructor")
-        )
-        .first();
+        .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
+        .collect();
 
-      const gameMasterRole = await ctx.db
-        .query("userRoles")
-        .withIndex("by_user_and_role", (q) => 
-          q.eq("userId", instructorId).eq("role", "game_master")
-        )
-        .first();
+      const roles = await ctx.db.query("roles").collect();
+      const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+      
+      const hasInstructorRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "instructor");
+      const hasGameMasterRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "game_master");
 
       // Assign the primary role (prefer game_master if both exist)
-      const role = gameMasterRole ? "game_master" : "instructor";
+      const role = hasGameMasterRole ? "game_master" : "instructor";
 
       await ctx.db.insert("eventInstructors", {
         eventId,
-        userId: instructorId,
+        personnelId: instructorId,
         role,
       });
     }
@@ -577,8 +573,9 @@ export const getWeekSchedule = query({
 
         const instructorsWithDetails = await Promise.all(
           eventInstructors.map(async (ei) => {
-            const user = await ctx.db.get(ei.userId);
-            return user?.name || "Unknown";
+            if (!ei.personnelId) return "Unknown";
+            const person = await ctx.db.get(ei.personnelId);
+            return person?.callSign || "Unknown";
           })
         );
         
@@ -603,6 +600,78 @@ export const getWeekSchedule = query({
 
     // Sort by start date
     return weekSchedule.sort((a, b) => a.startDate - b.startDate);
+  },
+});
+
+/**
+ * Get next week's schedule - all events for the next week
+ */
+export const getNextWeekSchedule = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireAuth(ctx);
+
+    // Calculate the start and end of next week (Sunday to Saturday)
+    const now = new Date();
+    const startOfNextWeek = new Date(now);
+    startOfNextWeek.setHours(0, 0, 0, 0);
+    // Move to start of next week (Sunday)
+    startOfNextWeek.setDate(startOfNextWeek.getDate() - startOfNextWeek.getDay() + 7);
+    
+    const endOfNextWeek = new Date(startOfNextWeek);
+    endOfNextWeek.setDate(endOfNextWeek.getDate() + 7); // End of next week (following Sunday)
+    endOfNextWeek.setHours(23, 59, 59, 999);
+
+    // Get all scheduled events within next week using the date index
+    const nextWeekEvents = await ctx.db
+      .query("events")
+      .withIndex("by_date", (q) =>
+        q.gte("startDate", startOfNextWeek.getTime()).lt("startDate", endOfNextWeek.getTime())
+      )
+      .filter((q) => q.eq(q.field("status"), "scheduled"))
+      .collect();
+
+    // Enrich events with full details
+    const nextWeekSchedule = await Promise.all(
+      nextWeekEvents.map(async (event) => {
+        const eventType = event.eventTypeId ? await ctx.db.get(event.eventTypeId) : null;
+        const server = await ctx.db.get(event.serverId);
+        
+        // Get event instructors
+        const eventInstructors = await ctx.db
+          .query("eventInstructors")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const instructorsWithDetails = await Promise.all(
+          eventInstructors.map(async (ei) => {
+            if (!ei.personnelId) return "Unknown";
+            const person = await ctx.db.get(ei.personnelId);
+            return person?.callSign || "Unknown";
+          })
+        );
+        
+        return {
+          _id: event._id,
+          title: event.title,
+          description: event.description,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          eventType: eventType?.name || "Unknown",
+          eventTypeAbbr: eventType?.abbreviation || "N/A",
+          eventTypeColor: eventType?.color || "#888888",
+          server: server?.name || "Unknown",
+          instructorName: instructorsWithDetails.join(", ") || "TBD",
+          currentParticipants: event.currentParticipants,
+          maxParticipants: event.maxParticipants,
+          bookingCode: event.bookingCode,
+          status: event.status,
+        };
+      })
+    );
+
+    // Sort by start date
+    return nextWeekSchedule.sort((a, b) => a.startDate - b.startDate);
   },
 });
 
@@ -645,8 +714,9 @@ export const getNextEvent = query({
 
     const instructorsWithDetails = await Promise.all(
       eventInstructors.map(async (ei) => {
-        const user = await ctx.db.get(ei.userId);
-        return user?.name || "Unknown";
+        if (!ei.personnelId) return "Unknown";
+        const person = await ctx.db.get(ei.personnelId);
+        return person?.callSign || "Unknown";
       })
     );
     
@@ -668,8 +738,82 @@ export const getNextEvent = query({
 });
 
 /**
- * Clear weekly events (runs automatically every Sunday at midnight)
- * This is an internal mutation called by the cron job
+ * Clear old events from previous months
+ * Runs on the last day of each month at midnight Sydney time
+ * Keeps events from the current month onwards, deletes all events from previous months
+ */
+export const clearOldEvents = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Get current date/time in Sydney timezone
+    const now = Date.now();
+    const currentDate = new Date(now);
+    
+    // Calculate the start of the current month in Sydney timezone
+    const sydneyOffset = 10 * 60 * 60 * 1000; // Base offset (AEST = UTC+10)
+    const sydneyDate = new Date(now + sydneyOffset);
+    
+    // Get first day of current month at 00:00:00 Sydney time
+    const monthStart = new Date(
+      Date.UTC(
+        sydneyDate.getUTCFullYear(),
+        sydneyDate.getUTCMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      )
+    );
+    // Convert back to UTC timestamp
+    const monthStartUTC = monthStart.getTime() - sydneyOffset;
+    
+    // Get all events that ended before the start of current month
+    const allEvents = await ctx.db.query("events").collect();
+    const eventsToDelete = allEvents.filter(event => event.endDate < monthStartUTC);
+    
+    console.log(
+      `Clearing ${eventsToDelete.length} old events from before ${monthStart.toISOString()} (Sydney time)`
+    );
+    
+    // Delete each event and its related data
+    for (const event of eventsToDelete) {
+      // Delete all participants
+      const participants = await ctx.db
+        .query("eventParticipants")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      
+      for (const participant of participants) {
+        await ctx.db.delete(participant._id);
+      }
+      
+      // Delete all event instructors
+      const eventInstructors = await ctx.db
+        .query("eventInstructors")
+        .withIndex("by_event", (q) => q.eq("eventId", event._id))
+        .collect();
+      
+      for (const instructor of eventInstructors) {
+        await ctx.db.delete(instructor._id);
+      }
+      
+      // Delete the event itself
+      await ctx.db.delete(event._id);
+    }
+    
+    return {
+      success: true,
+      deletedCount: eventsToDelete.length,
+      monthStart: monthStart.toISOString(),
+      message: `Cleared ${eventsToDelete.length} events from before ${monthStart.toISOString()}`,
+    };
+  },
+});
+
+/**
+ * Legacy weekly cleanup function - kept for backwards compatibility
+ * This is no longer used by the cron job but can be called manually if needed
  */
 export const clearWeeklyEvents = internalMutation({
   args: {},

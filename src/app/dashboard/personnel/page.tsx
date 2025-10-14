@@ -39,13 +39,18 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Users, Plus, Radio, Award, Grid, List, MoreVertical, Edit, Eye, Trash2, Calendar, Mail, Phone, TrendingUp } from "lucide-react"
+import { Users, Plus, Radio, Award, Grid, List, MoreVertical, Edit, Eye, Trash2, Calendar, Mail, Phone, TrendingUp, Shield, UserPlus, UserMinus } from "lucide-react"
 import { QualificationMatrix } from "@/components/dashboard/qualification-matrix"
 import { PersonnelQualifications } from "@/components/dashboard/personnel-qualifications"
-import { SearchFilterBar, FilterMode } from "@/components/dashboard/search-filter-bar"
+import { SearchFilterBar, FilterMode, SystemRole } from "@/components/dashboard/search-filter-bar"
+import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
+import { EmptyState } from "@/components/common/empty-state"
+import { LoadingState } from "@/components/common/loading-state"
 import { useToast } from "@/hooks/use-toast"
 import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select"
 import { Id } from "../../../../convex/_generated/dataModel"
+import { getUserFriendlyError, getThemeAwareColor, getTextColor } from "@/lib/utils"
+import { useTheme } from "@/providers/theme-provider"
 
 type PersonnelFormMode = "add" | "edit" | null
 
@@ -59,11 +64,15 @@ type PersonnelWithQualifications = {
   status: string
   joinDate?: number
   qualifications?: Array<{ name: string; abbreviation: string }>
+  roles?: Array<{ name: string; displayName: string; color: string }>
+  hasSystemAccess?: boolean
 }
 
 export default function PersonnelPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
   const [viewMode, setViewMode] = useState<"list" | "matrix">("list")
   const [selectedPersonnelId, setSelectedPersonnelId] = useState<string | null>(null)
   const [personnelDetailOpen, setPersonnelDetailOpen] = useState(false)
@@ -78,6 +87,14 @@ export default function PersonnelPage() {
   const [awardNotes, setAwardNotes] = useState("")
   const [isAwarding, setIsAwarding] = useState(false)
   
+  // Confirmation dialog state
+  const [removeQualConfirm, setRemoveQualConfirm] = useState<{
+    personnelId: string
+    qualificationId: string
+    qualName: string
+  } | null>(null)
+  const [archivePersonnelConfirm, setArchivePersonnelConfirm] = useState<PersonnelWithQualifications | null>(null)
+  
   // Form state
   const [formData, setFormData] = useState({
     callSign: "",
@@ -87,6 +104,7 @@ export default function PersonnelPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [filterMode, setFilterMode] = useState<FilterMode>("callsign")
   const [selectedRanks, setSelectedRanks] = useState<string[]>([])
+  const [selectedRoles, setSelectedRoles] = useState<SystemRole[]>([])
   const [sortBy, setSortBy] = useState("rank")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
 
@@ -115,7 +133,8 @@ export default function PersonnelPage() {
   const filteredPersonnel = useMemo(() => {
     if (!personnel || !qualifications) return []
 
-    let filtered = personnel
+    // Hide ANZAC Administrator system user
+    let filtered = personnel.filter(person => person.callSign !== "ANZAC Administrator")
 
     // Search filter based on selected mode
     if (searchTerm) {
@@ -146,6 +165,15 @@ export default function PersonnelPage() {
     // Rank filter
     if (selectedRanks.length > 0) {
       filtered = filtered.filter(person => person.rankId && selectedRanks.includes(person.rankId))
+    }
+
+    // Role filter
+    if (selectedRoles.length > 0) {
+      filtered = filtered.filter(person => {
+        // Only show personnel that have system access AND have at least one of the selected roles
+        if (!person.hasSystemAccess || !person.roles) return false
+        return person.roles.some(role => selectedRoles.includes(role.name as SystemRole))
+      })
     }
 
     // Sort
@@ -190,11 +218,12 @@ export default function PersonnelPage() {
     })
 
     return filtered
-  }, [personnel, qualifications, searchTerm, filterMode, selectedRanks, sortBy, sortOrder])
+  }, [personnel, qualifications, searchTerm, filterMode, selectedRanks, selectedRoles, sortBy, sortOrder])
 
   const handleClearFilters = () => {
     setSearchTerm("")
     setSelectedRanks([])
+    setSelectedRoles([])
     setSortBy("rank")
     setSortOrder("asc")
   }
@@ -249,7 +278,7 @@ export default function PersonnelPage() {
     } catch (error) {
       toast({
         title: "Error",
-        description: `Failed to ${personnelFormMode} personnel`,
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     }
@@ -280,7 +309,7 @@ export default function PersonnelPage() {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: (error as Error)?.message || "Failed to promote personnel",
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     }
@@ -336,7 +365,7 @@ export default function PersonnelPage() {
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: (error as Error)?.message || "Failed to award qualification.",
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     } finally {
@@ -344,50 +373,52 @@ export default function PersonnelPage() {
     }
   }
 
-  const handleRemoveQualification = async (personnelId: string, qualificationId: string, qualName: string) => {
-    if (!confirm(`Are you sure you want to remove the ${qualName} qualification? This action cannot be undone.`)) {
-      return
-    }
+  const handleRemoveQualification = (personnelId: string, qualificationId: string, qualName: string) => {
+    setRemoveQualConfirm({ personnelId, qualificationId, qualName })
+  }
+
+  const confirmRemoveQualification = async () => {
+    if (!removeQualConfirm) return
 
     try {
       await removeQualification({
-        personnelId: personnelId as Id<"personnel">,
-        qualificationId: qualificationId as Id<"qualifications">,
+        personnelId: removeQualConfirm.personnelId as Id<"personnel">,
+        qualificationId: removeQualConfirm.qualificationId as Id<"qualifications">,
       })
 
       toast({
         title: "Qualification Removed",
-        description: `${qualName} has been removed successfully.`,
+        description: `${removeQualConfirm.qualName} has been removed successfully.`,
       })
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: (error as Error)?.message || "Failed to remove qualification. You may not have permission.",
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     }
   }
 
-  const handleArchivePersonnel = async (person: PersonnelWithQualifications) => {
-    const confirmMessage = `Are you sure you want to archive ${person.callSign}? This will permanently delete their record and all associated data (qualifications, rank history, etc.). This action cannot be undone.`
-    
-    if (!confirm(confirmMessage)) {
-      return
-    }
+  const handleArchivePersonnel = (person: PersonnelWithQualifications) => {
+    setArchivePersonnelConfirm(person)
+  }
+
+  const confirmArchivePersonnel = async () => {
+    if (!archivePersonnelConfirm) return
 
     try {
       await deletePersonnel({
-        personnelId: person._id as Id<"personnel">,
+        personnelId: archivePersonnelConfirm._id as Id<"personnel">,
       })
 
       toast({
         title: "Personnel Archived",
-        description: `${person.callSign} has been permanently removed from the system.`,
+        description: `${archivePersonnelConfirm.callSign} has been permanently removed from the system.`,
       })
     } catch (error: unknown) {
       toast({
         title: "Error",
-        description: (error as Error)?.message || "Failed to archive personnel. You may not have permission.",
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     }
@@ -439,8 +470,6 @@ export default function PersonnelPage() {
           <p className="text-muted-foreground text-sm md:text-base lg:text-lg">
             Manage unit members and their <span className="text-military-blue">qualifications</span>
           </p>
-          {/* Decorative accent bar */}
-          <div className="absolute -bottom-2 left-0 w-16 md:w-24 h-0.5 bg-primary rounded-full"></div>
         </div>
         
         <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
@@ -486,6 +515,8 @@ export default function PersonnelPage() {
         onRanksChange={setSelectedRanks}
         selectedSchools={undefined}
         onSchoolsChange={undefined}
+        selectedRoles={selectedRoles}
+        onRolesChange={setSelectedRoles}
         sortBy={sortBy}
         onSortByChange={setSortBy}
         sortOrder={sortOrder}
@@ -517,19 +548,13 @@ export default function PersonnelPage() {
             </CardHeader>
             <CardContent>
               {!personnel ? (
-                <div className="text-center py-16">
-                  <div className="inline-block animate-spin mb-4">
-                    <Award className="w-12 h-12 text-primary" />
-                  </div>
-                  <p className="text-muted-foreground">Loading personnel...</p>
-                </div>
+                <LoadingState icon={Award} message="Loading personnel..." />
               ) : filteredPersonnel.length === 0 ? (
-                <div className="text-center py-16 space-y-4">
-                  <Award className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-lg text-muted-foreground">
-                    No personnel to display
-                  </p>
-                </div>
+                <EmptyState
+                  icon={Award}
+                  title="No personnel to display"
+                  description="Adjust your filters to see more results"
+                />
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {filteredPersonnel.map((person, index) => (
@@ -541,7 +566,7 @@ export default function PersonnelPage() {
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-sm truncate">
+                            <CardTitle className="text-lg truncate">
                               {person.rank?.abbreviation && `${person.rank.abbreviation} `}
                               {person.firstName || person.lastName 
                                 ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
@@ -586,29 +611,18 @@ export default function PersonnelPage() {
             </CardHeader>
             <CardContent>
               {!personnel ? (
-                <div className="text-center py-16">
-                  <div className="inline-block animate-spin mb-4">
-                    <Users className="w-12 h-12 text-primary" />
-                  </div>
-                  <p className="text-muted-foreground">Loading personnel...</p>
-                </div>
+                <LoadingState icon={Users} message="Loading personnel..." />
               ) : filteredPersonnel.length === 0 ? (
-                <div className="text-center py-16 space-y-4">
-                  <div>
-                    <p className="text-lg text-muted-foreground">
-                      {personnel.length === 0 ? "No personnel records found" : "No personnel match your filters"}
-                    </p>
-                    <p className="text-sm text-muted-foreground/70 mt-2">
-                      {personnel.length === 0 ? "Add your first member to get started" : "Try adjusting your search or filters"}
-                    </p>
-                  </div>
-                  {personnel.length === 0 && (
-                    <Button variant="outline" className="mt-4" onClick={handleAddPersonnel}>
-                      <Plus className="w-4 h-4 mr-2" />
-                      Add First Member
-                    </Button>
-                  )}
-                </div>
+                <EmptyState
+                  icon={Users}
+                  title={personnel.length === 0 ? "No personnel records found" : "No personnel match your filters"}
+                  description={personnel.length === 0 ? "Add your first member to get started" : "Try adjusting your search or filters"}
+                  action={personnel.length === 0 ? {
+                    label: "Add First Member",
+                    onClick: handleAddPersonnel,
+                    icon: Plus
+                  } : undefined}
+                />
               ) : (
                 <div className="space-y-3">
                   {filteredPersonnel.map((person, index) => (
@@ -634,6 +648,29 @@ export default function PersonnelPage() {
                             <p className="text-sm text-muted-foreground mb-2">
                               {person.rank?.name || "No rank assigned"}
                             </p>
+                            
+                            {/* System Roles */}
+                            {person.hasSystemAccess && person.roles && person.roles.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {person.roles.map((role) => {
+                                  const adjustedColor = getThemeAwareColor(role.color, isDarkMode)
+                                  return (
+                                    <Badge 
+                                      key={role.name} 
+                                      className="text-xs flex items-center gap-1"
+                                      style={{
+                                        backgroundColor: adjustedColor,
+                                        color: getTextColor(adjustedColor),
+                                        border: 'none'
+                                      }}
+                                    >
+                                      <Shield className="w-3 h-3" />
+                                      {role.displayName}
+                                    </Badge>
+                                  )
+                                })}
+                              </div>
+                            )}
                             
                             {/* Contact Info */}
                             <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -693,6 +730,21 @@ export default function PersonnelPage() {
                               {canPromote && (
                                 <>
                                   <DropdownMenuSeparator />
+                                  {!person.hasSystemAccess && (
+                                    <DropdownMenuItem onClick={() => console.log("Grant system access to", person.callSign)}>
+                                      <UserPlus className="w-4 h-4 mr-2" />
+                                      Grant System Access
+                                    </DropdownMenuItem>
+                                  )}
+                                  {person.hasSystemAccess && !person.roles?.some(r => r.name === "super_admin") && (
+                                    <DropdownMenuItem 
+                                      className="text-amber-600"
+                                      onClick={() => console.log("Revoke system access from", person.callSign)}
+                                    >
+                                      <UserMinus className="w-4 h-4 mr-2" />
+                                      Revoke System Access
+                                    </DropdownMenuItem>
+                                  )}
                                   <DropdownMenuItem 
                                     className="text-destructive"
                                     onClick={() => handleArchivePersonnel(person)}
@@ -760,6 +812,30 @@ export default function PersonnelPage() {
                           <p className="font-medium capitalize">{selectedPerson.status}</p>
                         </div>
                       </div>
+                      {selectedPerson.hasSystemAccess && selectedPerson.roles && selectedPerson.roles.length > 0 && (
+                        <div className="col-span-2">
+                          <Label className="text-xs text-muted-foreground">System Roles</Label>
+                          <div className="flex flex-wrap gap-1 mt-1">
+                            {selectedPerson.roles.map((role) => {
+                              const adjustedColor = getThemeAwareColor(role.color, isDarkMode)
+                              return (
+                                <Badge 
+                                  key={role.name} 
+                                  className="text-xs flex items-center gap-1"
+                                  style={{
+                                    backgroundColor: adjustedColor,
+                                    color: getTextColor(adjustedColor),
+                                    border: 'none'
+                                  }}
+                                >
+                                  <Shield className="w-3 h-3" />
+                                  {role.displayName}
+                                </Badge>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
                       {selectedPerson.email && (
                         <div>
                           <Label className="text-xs text-muted-foreground">Email</Label>
@@ -1091,6 +1167,25 @@ export default function PersonnelPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Confirmation Dialogs */}
+      <ConfirmationDialog
+        open={removeQualConfirm !== null}
+        onOpenChange={(open) => !open && setRemoveQualConfirm(null)}
+        title="Remove Qualification"
+        description={`Are you sure you want to remove the ${removeQualConfirm?.qualName} qualification? This action cannot be undone.`}
+        actionText="Remove"
+        onConfirm={confirmRemoveQualification}
+      />
+
+      <ConfirmationDialog
+        open={archivePersonnelConfirm !== null}
+        onOpenChange={(open) => !open && setArchivePersonnelConfirm(null)}
+        title={`Archive ${archivePersonnelConfirm?.callSign}?`}
+        description="This will permanently delete their record and all associated data (qualifications, rank history, etc.). This action cannot be undone."
+        actionText="Archive"
+        onConfirm={confirmArchivePersonnel}
+      />
     </div>
   )
 }

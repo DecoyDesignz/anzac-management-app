@@ -35,33 +35,35 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
+import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
 import { GraduationCap, Users, Award, UserCheck, Settings, Plus, Edit, Trash2, X } from "lucide-react"
 import { Id } from "../../../../convex/_generated/dataModel"
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog"
-import { Skeleton } from "@/components/ui/skeleton"
+import { getUserFriendlyError, getSchoolIndicatorColor } from "@/lib/utils"
+import { ColorPicker } from "@/components/ui/color-picker"
+import { useTheme } from "@/providers/theme-provider"
+import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
+import { FormDialog } from "@/components/common/form-dialog"
+import { LoadingState } from "@/components/common/loading-state"
+import { EmptyState } from "@/components/common/empty-state"
 
 export default function SchoolsPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
+  const { theme } = useTheme()
+  const isDarkMode = theme === 'dark'
   const [selectedSchoolId, setSelectedSchoolId] = useState<Id<"schools"> | null>(null)
   const [instructorAssignmentOpen, setInstructorAssignmentOpen] = useState(false)
   const [createSchoolOpen, setCreateSchoolOpen] = useState(false)
   const [editSchoolOpen, setEditSchoolOpen] = useState(false)
   const [deleteSchoolId, setDeleteSchoolId] = useState<Id<"schools"> | null>(null)
-  const [editingSchool, setEditingSchool] = useState<{ _id: Id<"schools">, name: string, abbreviation: string } | null>(null)
+  const [editingSchool, setEditingSchool] = useState<{ _id: Id<"schools">, name: string, abbreviation: string, color?: string } | null>(null)
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [formError, setFormError] = useState<string | null>(null)
   
   // Form states
   const [newSchoolName, setNewSchoolName] = useState("")
   const [newSchoolAbbr, setNewSchoolAbbr] = useState("")
+  const [newSchoolColor, setNewSchoolColor] = useState("")
 
   // Check if user is admin
   const isAdmin = session?.user?.role === 'administrator' || session?.user?.role === 'super_admin'
@@ -123,7 +125,7 @@ export default function SchoolsPage() {
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update instructor assignment",
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     }
@@ -131,18 +133,18 @@ export default function SchoolsPage() {
 
   const handleCreateSchool = async () => {
     if (!newSchoolName.trim() || !newSchoolAbbr.trim()) {
-      toast({
-        title: "Validation Error",
-        description: "Please provide both name and abbreviation",
-        variant: "destructive",
-      })
+      setFormError("Please provide both name and abbreviation")
       return
     }
+
+    setIsSubmitting(true)
+    setFormError(null)
 
     try {
       await createSchool({
         name: newSchoolName.trim(),
         abbreviation: newSchoolAbbr.trim(),
+        color: newSchoolColor.trim() || undefined,
       })
       toast({
         title: "School created",
@@ -150,24 +152,28 @@ export default function SchoolsPage() {
       })
       setNewSchoolName("")
       setNewSchoolAbbr("")
+      setNewSchoolColor("")
       setCreateSchoolOpen(false)
+      setFormError(null)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to create school",
-        variant: "destructive",
-      })
+      setFormError(getUserFriendlyError(error))
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
   const handleUpdateSchool = async () => {
     if (!editingSchool) return
 
+    setIsSubmitting(true)
+    setFormError(null)
+
     try {
       await updateSchool({
         schoolId: editingSchool._id,
         name: editingSchool.name,
         abbreviation: editingSchool.abbreviation,
+        color: editingSchool.color,
       })
       toast({
         title: "School updated",
@@ -175,12 +181,11 @@ export default function SchoolsPage() {
       })
       setEditingSchool(null)
       setEditSchoolOpen(false)
+      setFormError(null)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: error instanceof Error ? error.message : "Failed to update school",
-        variant: "destructive",
-      })
+      setFormError(getUserFriendlyError(error))
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -197,58 +202,20 @@ export default function SchoolsPage() {
     } catch (error) {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "Failed to delete school",
+        description: getUserFriendlyError(error),
         variant: "destructive",
       })
     }
   }
 
-  const openEditDialog = (school: { _id: Id<"schools">, name: string, abbreviation: string }) => {
+  const openEditDialog = (school: { _id: Id<"schools">, name: string, abbreviation: string, color?: string }) => {
     setEditingSchool({ ...school })
     setEditSchoolOpen(true)
   }
 
-  const getSchoolColor = (schoolName: string) => {
-    const colors = {
-      "Infantry": "bg-yellow-500/20 border-yellow-500/30 text-yellow-700 dark:text-yellow-300",
-      "Engineers": "bg-orange-500/20 border-orange-500/30 text-orange-700 dark:text-orange-300",
-      "Armour": "bg-blue-500/20 border-blue-500/30 text-blue-700 dark:text-blue-300",
-      "Artillery": "bg-cyan-500/20 border-cyan-500/30 text-cyan-700 dark:text-cyan-300",
-      "Aviation": "bg-green-500/20 border-green-500/30 text-green-700 dark:text-green-300",
-      "Command": "bg-purple-500/20 border-purple-500/30 text-purple-700 dark:text-purple-300",
-    }
-    return colors[schoolName as keyof typeof colors] || "bg-gray-500/20 border-gray-500/30"
-  }
-
   // Loading state
   if (!schoolsWithInstructors || !qualifications || !systemUsers || !managedSchools) {
-    return (
-      <div className="space-y-8 relative pb-8">
-        <div className="flex justify-between items-center flex-wrap gap-4">
-          <div className="space-y-2">
-            <Skeleton className="h-10 w-96" />
-            <Skeleton className="h-6 w-72" />
-          </div>
-          <div className="flex gap-2">
-            <Skeleton className="h-10 w-36" />
-            <Skeleton className="h-10 w-44" />
-          </div>
-        </div>
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-6 w-48" />
-            <Skeleton className="h-4 w-96 mt-2" />
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {[1, 2, 3, 4, 5].map((i) => (
-                <Skeleton key={i} className="h-16 w-full" />
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
+    return <LoadingState type="skeleton" count={5} />
   }
 
   return (
@@ -263,8 +230,6 @@ export default function SchoolsPage() {
           <p className="text-muted-foreground text-sm md:text-base lg:text-lg">
             Manage training schools, instructors, and qualifications
           </p>
-          {/* Decorative accent bar */}
-          <div className="absolute -bottom-2 left-0 w-16 md:w-24 h-0.5 bg-primary rounded-full"></div>
         </div>
         
         <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
@@ -410,24 +375,44 @@ export default function SchoolsPage() {
           </div>
         </CardHeader>
         <CardContent>
-          {/* Desktop Table View */}
-          <div className="hidden lg:block overflow-x-auto -mx-6 px-6">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>School</TableHead>
-                  <TableHead>Instructors</TableHead>
-                  <TableHead>Qualifications</TableHead>
-                  <TableHead>Total Awarded</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {schoolsWithDetails.map((school) => (
+          {schoolsWithDetails.length === 0 ? (
+            <EmptyState
+              icon={GraduationCap}
+              title="No schools found"
+              description="Get started by creating your first training school"
+              action={
+                isAdmin
+                  ? {
+                      label: "Create School",
+                      onClick: () => setCreateSchoolOpen(true),
+                      icon: Plus,
+                    }
+                  : undefined
+              }
+            />
+          ) : (
+            <>
+              {/* Desktop Table View */}
+              <div className="hidden lg:block overflow-x-auto -mx-6 px-6">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>School</TableHead>
+                      <TableHead>Instructors</TableHead>
+                      <TableHead>Qualifications</TableHead>
+                      <TableHead>Total Awarded</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {schoolsWithDetails.map((school) => (
                   <TableRow key={school._id}>
                     <TableCell>
                       <div className="flex items-center gap-3">
-                        <div className={`w-3 h-3 rounded-full ${getSchoolColor(school.name).replace('bg-', 'bg-').replace('/20', '/60')}`}></div>
+                        <div 
+                          className="w-3 h-3 rounded-full" 
+                          style={{ backgroundColor: getSchoolIndicatorColor(school.color, 0.6, isDarkMode) }}
+                        ></div>
                         <div>
                           <div className="font-medium">{school.name}</div>
                           <div className="text-sm text-muted-foreground">{school.abbreviation}</div>
@@ -523,7 +508,10 @@ export default function SchoolsPage() {
                   {/* School Header */}
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className={`w-4 h-4 rounded-full ${getSchoolColor(school.name).replace('bg-', 'bg-').replace('/20', '/60')}`}></div>
+                      <div 
+                        className="w-4 h-4 rounded-full" 
+                        style={{ backgroundColor: getSchoolIndicatorColor(school.color, 0.6, isDarkMode) }}
+                      ></div>
                       <div>
                         <div className="font-semibold text-lg">{school.name}</div>
                         <div className="text-sm text-muted-foreground">{school.abbreviation}</div>
@@ -614,121 +602,127 @@ export default function SchoolsPage() {
               </Card>
             ))}
           </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
       {/* Create School Dialog */}
-      <Dialog open={createSchoolOpen} onOpenChange={setCreateSchoolOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create New School</DialogTitle>
-            <DialogDescription>
-              Add a new training school to the system
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="school-name">School Name</Label>
-              <Input
-                id="school-name"
-                placeholder="e.g., Infantry"
-                value={newSchoolName}
-                onChange={(e) => setNewSchoolName(e.target.value)}
+      <FormDialog
+        open={createSchoolOpen}
+        onOpenChange={setCreateSchoolOpen}
+        title="Create New School"
+        description="Add a new training school to the system"
+        onSubmit={handleCreateSchool}
+        submitText="Create School"
+        isSubmitting={isSubmitting}
+        error={formError}
+      >
+        <div className="space-y-4">
+          <div>
+            <Label htmlFor="school-name">School Name</Label>
+            <Input
+              id="school-name"
+              placeholder="e.g., Infantry"
+              value={newSchoolName}
+              onChange={(e) => setNewSchoolName(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="school-abbr">Abbreviation</Label>
+            <Input
+              id="school-abbr"
+              placeholder="e.g., INF"
+              value={newSchoolAbbr}
+              onChange={(e) => setNewSchoolAbbr(e.target.value)}
+            />
+          </div>
+          <div>
+            <Label htmlFor="school-color">School Color</Label>
+            <div className="flex items-center gap-3">
+              <ColorPicker
+                value={newSchoolColor || '#6b7280'}
+                onChange={(color) => setNewSchoolColor(color)}
               />
-            </div>
-            <div>
-              <Label htmlFor="school-abbr">Abbreviation</Label>
-              <Input
-                id="school-abbr"
-                placeholder="e.g., INF"
-                value={newSchoolAbbr}
-                onChange={(e) => setNewSchoolAbbr(e.target.value)}
-              />
+              <span className="text-sm text-muted-foreground">
+                {newSchoolColor || '#6b7280'}
+              </span>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateSchoolOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleCreateSchool}>
-              Create School
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        </div>
+      </FormDialog>
 
       {/* Edit School Dialog */}
-      <Dialog open={editSchoolOpen} onOpenChange={setEditSchoolOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Edit School</DialogTitle>
-            <DialogDescription>
-              Update school information
-            </DialogDescription>
-          </DialogHeader>
-          {editingSchool && (
-            <div className="space-y-4">
-              <div>
-                <Label htmlFor="edit-school-name">School Name</Label>
-                <Input
-                  id="edit-school-name"
-                  value={editingSchool.name}
-                  onChange={(e) => setEditingSchool({ ...editingSchool, name: e.target.value })}
+      <FormDialog
+        open={editSchoolOpen}
+        onOpenChange={setEditSchoolOpen}
+        title="Edit School"
+        description="Update school information"
+        onSubmit={handleUpdateSchool}
+        submitText="Save Changes"
+        isSubmitting={isSubmitting}
+        error={formError}
+      >
+        {editingSchool && (
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="edit-school-name">School Name</Label>
+              <Input
+                id="edit-school-name"
+                value={editingSchool.name}
+                onChange={(e) => setEditingSchool({ ...editingSchool, name: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-school-abbr">Abbreviation</Label>
+              <Input
+                id="edit-school-abbr"
+                value={editingSchool.abbreviation}
+                onChange={(e) => setEditingSchool({ ...editingSchool, abbreviation: e.target.value })}
+              />
+            </div>
+            <div>
+              <Label htmlFor="edit-school-color">School Color</Label>
+              <div className="flex items-center gap-3">
+                <ColorPicker
+                  value={editingSchool.color || '#6b7280'}
+                  onChange={(color) => setEditingSchool({ ...editingSchool, color })}
                 />
-              </div>
-              <div>
-                <Label htmlFor="edit-school-abbr">Abbreviation</Label>
-                <Input
-                  id="edit-school-abbr"
-                  value={editingSchool.abbreviation}
-                  onChange={(e) => setEditingSchool({ ...editingSchool, abbreviation: e.target.value })}
-                />
+                <span className="text-sm text-muted-foreground">
+                  {editingSchool.color || '#6b7280'}
+                </span>
               </div>
             </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditSchoolOpen(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleUpdateSchool}>
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </div>
+        )}
+      </FormDialog>
 
       {/* Delete School Confirmation */}
-      <AlertDialog open={!!deleteSchoolId} onOpenChange={(open) => !open && setDeleteSchoolId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the school. This action cannot be undone.
-              {deleteSchoolId && (() => {
-                const school = schoolsWithDetails.find(s => s._id === deleteSchoolId)
-                if (school && school.qualificationCount > 0) {
-                  return (
-                    <div className="mt-2 text-destructive font-medium">
-                      Warning: This school has {school.qualificationCount} qualification{school.qualificationCount !== 1 ? 's' : ''} assigned. 
-                      You must delete or reassign them first.
-                    </div>
-                  )
-                }
-                return null
-              })()}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction 
-              onClick={handleDeleteSchool}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete School
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmationDialog
+        open={!!deleteSchoolId}
+        onOpenChange={(open) => !open && setDeleteSchoolId(null)}
+        title="Are you sure?"
+        description={
+          <>
+            This will permanently delete the school. This action cannot be undone.
+            {deleteSchoolId && (() => {
+              const school = schoolsWithDetails.find(s => s._id === deleteSchoolId)
+              if (school && school.qualificationCount > 0) {
+                return (
+                  <div className="mt-2 text-destructive font-medium">
+                    Warning: This school has {school.qualificationCount} qualification{school.qualificationCount !== 1 ? 's' : ''} assigned. 
+                    You must delete or reassign them first.
+                  </div>
+                )
+              }
+              return null
+            })()}
+          </>
+        }
+        actionText="Delete School"
+        onConfirm={handleDeleteSchool}
+        variant="destructive"
+      />
     </div>
   )
 }

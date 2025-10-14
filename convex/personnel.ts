@@ -42,7 +42,7 @@ export const listPersonnel = query({
 });
 
 /**
- * List all personnel with their qualifications
+ * List all personnel with their qualifications and system roles
  */
 export const listPersonnelWithQualifications = query({
   args: {
@@ -65,7 +65,7 @@ export const listPersonnelWithQualifications = query({
           .collect()
       : await ctx.db.query("personnel").collect();
     
-    // Enrich with rank and qualifications information
+    // Enrich with rank, qualifications, and system roles information
     const personnelWithDetails = await Promise.all(
       personnel.map(async (person) => {
         const rank = person.rankId ? await ctx.db.get(person.rankId) : null;
@@ -83,10 +83,30 @@ export const listPersonnelWithQualifications = query({
           })
         );
 
+        // Get system roles with full details
+        const personnelRoles = await ctx.db
+          .query("userRoles")
+          .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
+          .collect();
+
+        // Get role details from role IDs
+        const roles = await ctx.db.query("roles").collect();
+        const roleMap = new Map(roles.map(role => [role._id, role]));
+        const roleDetails = personnelRoles
+          .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+          .filter(Boolean)
+          .map(role => ({
+            name: role!.roleName,
+            displayName: role!.displayName,
+            color: role!.color,
+          }));
+
         return {
           ...person,
           rank,
           qualifications: qualifications.filter(q => q !== null),
+          roles: roleDetails,
+          hasSystemAccess: person.passwordHash !== undefined,
         };
       })
     );
@@ -458,6 +478,227 @@ export const deletePersonnel = mutation({
 
     // Delete personnel
     await ctx.db.delete(args.personnelId);
+    return { success: true };
+  },
+});
+
+/**
+ * Get personnel with their system roles
+ */
+export const listPersonnelWithRoles = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("active"),
+        v.literal("inactive"),
+        v.literal("leave"),
+        v.literal("discharged")
+      )
+    ),
+    systemAccessOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx);
+
+    let personnel = args.status
+      ? await ctx.db
+          .query("personnel")
+          .withIndex("by_status", (q) => q.eq("status", args.status!))
+          .collect()
+      : await ctx.db.query("personnel").collect();
+    
+    // Filter to only personnel with system access if requested
+    if (args.systemAccessOnly) {
+      personnel = personnel.filter(p => p.passwordHash !== undefined);
+    }
+
+    // Enrich with rank and roles information
+    const personnelWithDetails = await Promise.all(
+      personnel.map(async (person) => {
+        const rank = person.rankId ? await ctx.db.get(person.rankId) : null;
+        
+        // Get roles
+        const personnelRoles = await ctx.db
+          .query("userRoles")
+          .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
+          .collect();
+
+        // Get role details from role IDs
+        const roles = await ctx.db.query("roles").collect();
+        const roleMap = new Map(roles.map(role => [role._id, role]));
+        const roleDetails = personnelRoles
+          .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+          .filter(Boolean)
+          .map(role => ({
+            name: role!.roleName,
+            displayName: role!.displayName,
+            color: role!.color,
+          }));
+
+        return {
+          ...person,
+          rank,
+          roles: roleDetails,
+          hasSystemAccess: person.passwordHash !== undefined,
+        };
+      })
+    );
+
+    return personnelWithDetails;
+  },
+});
+
+/**
+ * Grant system access to personnel (Administrator only)
+ * This allows a personnel member to log into the system
+ * Password will be set separately via the admin
+ */
+export const grantSystemAccess = mutation({
+  args: {
+    personnelId: v.id("personnel"),
+    roles: v.array(v.union(
+      v.literal("administrator"),
+      v.literal("game_master"),
+      v.literal("instructor"),
+      v.literal("member")
+    )),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, "administrator");
+
+    const person = await ctx.db.get(args.personnelId);
+    if (!person) {
+      throw new Error("Personnel not found");
+    }
+
+    // Check if personnel already has system access
+    if (person.passwordHash) {
+      throw new Error("Personnel already has system access");
+    }
+
+    // Note: Password will be set separately when admin creates the account
+    // For now, just mark as ready for system access
+    await ctx.db.patch(args.personnelId, {
+      isActive: true,
+      requirePasswordChange: true,
+    });
+
+    // Add roles
+    for (const roleName of args.roles) {
+      const role = await ctx.db
+        .query("roles")
+        .withIndex("by_role_name", (q) => q.eq("roleName", roleName))
+        .first();
+      
+      if (role) {
+        await ctx.db.insert("userRoles", {
+          personnelId: args.personnelId,
+          roleId: role._id,
+        });
+      }
+    }
+
+    return { success: true };
+  },
+});
+
+/**
+ * Revoke system access from personnel (Administrator only)
+ * This removes login capability but keeps the personnel record
+ */
+export const revokeSystemAccess = mutation({
+  args: {
+    personnelId: v.id("personnel"),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, "administrator");
+
+    const person = await ctx.db.get(args.personnelId);
+    if (!person) {
+      throw new Error("Personnel not found");
+    }
+
+    // Check if person has super_admin role (cannot revoke)
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.personnelId))
+      .collect();
+
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const isSuperAdmin = personnelRoles.some(r => r.roleId && roleMap.get(r.roleId) === "super_admin");
+    if (isSuperAdmin) {
+      throw new Error("Cannot revoke system access from Super Administrators");
+    }
+
+    // Remove all roles
+    for (const role of personnelRoles) {
+      await ctx.db.delete(role._id);
+    }
+
+    // Remove instructor school assignments
+    const instructorAssignments = await ctx.db
+      .query("instructorSchools")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.personnelId))
+      .collect();
+
+    for (const assignment of instructorAssignments) {
+      await ctx.db.delete(assignment._id);
+    }
+
+    // Clear login credentials
+    await ctx.db.patch(args.personnelId, {
+      passwordHash: undefined,
+      isActive: undefined,
+      requirePasswordChange: undefined,
+      lastPasswordChange: undefined,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Update personnel roles (Administrator only)
+ */
+export const updatePersonnelRoles = mutation({
+  args: {
+    personnelId: v.id("personnel"),
+    roles: v.array(v.union(
+      v.literal("administrator"),
+      v.literal("game_master"),
+      v.literal("instructor"),
+      v.literal("member")
+    )),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, "administrator");
+
+    // Remove existing roles
+    const existingRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.personnelId))
+      .collect();
+
+    for (const role of existingRoles) {
+      await ctx.db.delete(role._id);
+    }
+
+    // Add new roles
+    for (const roleName of args.roles) {
+      const role = await ctx.db
+        .query("roles")
+        .withIndex("by_role_name", (q) => q.eq("roleName", roleName))
+        .first();
+      
+      if (role) {
+        await ctx.db.insert("userRoles", {
+          personnelId: args.personnelId,
+          roleId: role._id,
+        });
+      }
+    }
+
     return { success: true };
   },
 });

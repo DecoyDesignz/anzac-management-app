@@ -156,173 +156,125 @@
 }
 
 .dark {
-  /* 70% - Neutral Foundation (Dark backgrounds, surfaces, text) */
-  --background: oklch(0.18 0.01 85);
+  /* 70% - Dark Gray Foundation (Backgrounds, surfaces, text) - Following Material Design & UX Best Practices */
+  --background: oklch(0.12 0.005 85);  /* Material Design recommended dark grey, not pure black */
   --foreground: oklch(0.95 0.005 85);
-  --card: oklch(0.22 0.01 85);
+  --card: oklch(0.18 0.008 85);  /* Elevated surface - lighter than background */
   --card-foreground: oklch(0.95 0.005 85);
-  --popover: oklch(0.22 0.01 85);
-  --popover-foreground: oklch(0.95 0.005 85);
-  
-  /* 30% - Secondary Supporting (Borders, subtle backgrounds, hover states) */
-  --secondary: oklch(0.28 0.01 85);
-  --secondary-foreground: oklch(0.85 0.005 85);
-  --muted: oklch(0.25 0.01 85);
-  --muted-foreground: oklch(0.65 0.01 85);
-  --border: oklch(0.35 0.015 85);
-  --input: oklch(0.28 0.01 85);
-  
-  /* 10% - Orange Accent (CTAs, highlights, active states) - SOLID COLORS ONLY */
-  --primary: oklch(0.70 0.19 45);
-  --primary-foreground: oklch(0.1 0 0);
-  --accent: oklch(0.75 0.17 45);
-  --accent-foreground: oklch(0.1 0 0);
-  --ring: oklch(0.70 0.19 45);
-  
-  /* Accent colors for info elements - compatible with dark theme */
-  --military-blue: oklch(0.65 0.15 240);
-  --military-blue-foreground: oklch(0.05 0 0);
-  --military-cyan: oklch(0.70 0.12 200);
-  --military-cyan-foreground: oklch(0.05 0 0);
-  
-  /* Utility colors */
-  --destructive: oklch(0.60 0.23 25);
-  --destructive-foreground: oklch(1.0 0 0);
-  
-  /* Chart colors - use primary orange and neutral variations */
-  --chart-1: oklch(0.70 0.19 45);
-  --chart-2: oklch(0.65 0.01 85);
-  --chart-3: oklch(0.65 0.16 50);
-  --chart-4: oklch(0.60 0.01 85);
-  --chart-5: oklch(0.75 0.17 45);
-  
-  /* Sidebar - neutral background */
-  --sidebar: oklch(0.20 0.01 85);
-  --sidebar-foreground: oklch(0.95 0.005 85);
-  --sidebar-primary: oklch(0.70 0.19 45);
-  --sidebar-primary-foreground: oklch(0.1 0 0);
-  --sidebar-accent: oklch(0.28 0.01 85);
-  --sidebar-accent-foreground: oklch(0.85 0.005 85);
-  --sidebar-border: oklch(0.35 0.015 85);
-  --sidebar-ring: oklch(0.70 0.19 45);
-  --font-sans: Montserrat, sans-serif;
-  --font-serif: Merriweather, serif;
-  --font-mono: Fira Code, monospace;
-  --radius: 0.3rem;
-  --shadow-x: 0px;
-  --shadow-y: 2px;
-  --shadow-blur: 3px;
-  --shadow-spread: 0px;
-  --shadow-opacity: 0.18;
-  --shadow-color: hsl(0 0% 5%);
-  --shadow-2xs: 0px 2px 3px 0px hsl(0 0% 5% / 0.09);
-  --shadow-xs: 0px 2px 3px 0px hsl(0 0% 5% / 0.09);
-  --shadow-sm: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 1px 2px -1px hsl(0 0% 5% / 0.18);
-  --shadow: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 1px 2px -1px hsl(0 0% 5% / 0.18);
-  --shadow-md: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 2px 4px -1px hsl(0 0% 5% / 0.18);
-  --shadow-lg: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 4px 6px -1px hsl(0 0% 5% / 0.18);
-  --shadow-xl: 0px 2px 3px 0px hsl(0 0% 5% / 0.18), 0px 8px 10px -1px hsl(0 0% 5% / 0.18);
-  --shadow-2xl: 0px 2px 3px 0px hsl(0 0% 5% / 0.45);
-}
-
-/* Military Theme - Dark Charcoal with Orange/Blue Accents */
-.military {
-  /* 70% - Dark Gray Foundation (Backgrounds, surfaces, text) */
-  --background: oklch(0.12 0.005 85);
-  --foreground: oklch(0.95 0.005 85);
-  --card: oklch(0.18 0.008 85);
-  --card-foreground: oklch(0.95 0.005 85);
-  --popover: oklch(0.18 0.008 85);
+  --popover: oklch(0.20 0.008 85);  /* Higher elevation - even lighter */
   --popover-foreground: oklch(0.95 0.005 85);
   
   /* 30% - Secondary Supporting (Borders, subtle backgrounds, hover states) */
   --secondary: oklch(0.22 0.01 85);
   --secondary-foreground: oklch(0.85 0.005 85);
   --muted: oklch(0.20 0.008 85);
-  --muted-foreground: oklch(0.65 0.01 85);
+  --muted-foreground: oklch(0.68 0.008 85);  /* Improved contrast for accessibility */
   --border: oklch(0.30 0.015 85);
   --input: oklch(0.22 0.01 85);
   
-  /* 10% - Military Blue/Teal Accent (CTAs, highlights, active states) - SOLID COLORS ONLY */
-  --primary: oklch(0.70 0.15 220);
+  /* 10% - Desaturated Blue/Teal Accent - Reduced saturation for eye comfort & accessibility */
+  --primary: oklch(0.70 0.10 220);  /* Reduced chroma from 0.15 to 0.10 */
   --primary-foreground: oklch(0.05 0 0);
-  --accent: oklch(0.75 0.12 200);
+  --accent: oklch(0.75 0.08 200);  /* Reduced chroma from 0.12 to 0.08 */
   --accent-foreground: oklch(0.05 0 0);
-  --ring: oklch(0.70 0.15 220);
+  --ring: oklch(0.70 0.10 220);
   
-  /* Military Blue/Teal Accents - For secondary highlights and info elements */
-  --military-blue: oklch(0.65 0.18 220);
+  /* Desaturated Blue/Teal Accents - Less vibrant for better dark mode experience */
+  --military-blue: oklch(0.68 0.12 220);  /* Reduced chroma from 0.18 to 0.12 */
   --military-blue-foreground: oklch(0.05 0 0);
-  --military-cyan: oklch(0.75 0.12 200);
+  --military-cyan: oklch(0.75 0.08 200);  /* Reduced chroma from 0.12 to 0.08 */
   --military-cyan-foreground: oklch(0.05 0 0);
   
   /* Utility colors */
-  --destructive: oklch(0.60 0.23 25);
+  --destructive: oklch(0.60 0.18 25);  /* Slightly desaturated */
   --destructive-foreground: oklch(1.0 0 0);
   
-  /* Chart colors - military blue and teal accents */
-  --chart-1: oklch(0.70 0.15 220);  /* Military blue */
-  --chart-2: oklch(0.75 0.12 200);  /* Teal */
-  --chart-3: oklch(0.65 0.18 220);  /* Darker blue */
-  --chart-4: oklch(0.80 0.10 180);  /* Light cyan */
-  --chart-5: oklch(0.75 0.15 220);  /* Bright blue */
+  /* Chart colors - desaturated for dark mode */
+  --chart-1: oklch(0.70 0.10 220);  /* Military blue - desaturated */
+  --chart-2: oklch(0.75 0.08 200);  /* Teal - desaturated */
+  --chart-3: oklch(0.68 0.12 220);  /* Darker blue - desaturated */
+  --chart-4: oklch(0.80 0.07 180);  /* Light cyan - desaturated */
+  --chart-5: oklch(0.75 0.10 220);  /* Bright blue - desaturated */
   
-  /* Sidebar - dark gray background */
-  --sidebar: oklch(0.14 0.008 85);
+  /* Sidebar - dark gray background with elevation hierarchy */
+  --sidebar: oklch(0.14 0.008 85);  /* Slightly elevated from background */
   --sidebar-foreground: oklch(0.95 0.005 85);
-  --sidebar-primary: oklch(0.70 0.15 220);
+  --sidebar-primary: oklch(0.70 0.10 220);  /* Desaturated */
   --sidebar-primary-foreground: oklch(0.05 0 0);
   --sidebar-accent: oklch(0.22 0.01 85);
   --sidebar-accent-foreground: oklch(0.85 0.005 85);
-  --sidebar-border: oklch(0.30 0.015 85);
-  --sidebar-ring: oklch(0.70 0.15 220);
+  --sidebar-border: oklch(0.28 0.012 85);  /* Slightly lighter for better visibility */
+  --sidebar-ring: oklch(0.70 0.10 220);  /* Desaturated */
   
-  /* Military-themed shadows with blue tints */
-  --shadow-color: hsl(220 60% 15%);
-  --shadow-2xs: 0px 2px 3px 0px hsl(220 60% 15% / 0.15);
-  --shadow-xs: 0px 2px 3px 0px hsl(220 60% 15% / 0.15);
-  --shadow-sm: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 1px 2px -1px hsl(220 60% 15% / 0.25);
-  --shadow: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 1px 2px -1px hsl(220 60% 15% / 0.25);
-  --shadow-md: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 2px 4px -1px hsl(220 60% 15% / 0.25);
-  --shadow-lg: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 4px 6px -1px hsl(220 60% 15% / 0.25);
-  --shadow-xl: 0px 2px 3px 0px hsl(220 60% 15% / 0.25), 0px 8px 10px -1px hsl(220 60% 15% / 0.25);
-  --shadow-2xl: 0px 2px 3px 0px hsl(220 60% 15% / 0.4);
+  /* Elevation levels for dark mode - higher elevation = lighter surface */
+  --elevation-0: oklch(0.12 0.005 85);  /* Base/background */
+  --elevation-1: oklch(0.15 0.006 85);  /* 1dp */
+  --elevation-2: oklch(0.17 0.007 85);  /* 2dp - cards */
+  --elevation-3: oklch(0.19 0.008 85);  /* 3dp - dialogs */
+  --elevation-4: oklch(0.21 0.009 85);  /* 4dp - modals */
+  --elevation-5: oklch(0.23 0.010 85);  /* 6dp - popovers */
+  
+  --font-sans: Montserrat, sans-serif;
+  --font-serif: Merriweather, serif;
+  --font-mono: Fira Code, monospace;
+  --radius: 0.3rem;
+  --shadow-x: 0px;
+  --shadow-y: 1px;
+  --shadow-blur: 2px;
+  --shadow-spread: 0px;
+  --shadow-opacity: 0.08;  /* Significantly reduced for dark mode */
+  
+  /* Minimal shadows in dark mode - prefer elevation-based hierarchy */
+  --shadow-color: hsl(220 60% 10%);
+  --shadow-2xs: 0px 1px 2px 0px hsl(220 60% 10% / 0.05);
+  --shadow-xs: 0px 1px 2px 0px hsl(220 60% 10% / 0.06);
+  --shadow-sm: 0px 1px 2px 0px hsl(220 60% 10% / 0.08), 0px 1px 1px -1px hsl(220 60% 10% / 0.08);
+  --shadow: 0px 1px 2px 0px hsl(220 60% 10% / 0.08), 0px 1px 1px -1px hsl(220 60% 10% / 0.08);
+  --shadow-md: 0px 1px 3px 0px hsl(220 60% 10% / 0.10), 0px 1px 2px -1px hsl(220 60% 10% / 0.10);
+  --shadow-lg: 0px 2px 4px 0px hsl(220 60% 10% / 0.12), 0px 2px 3px -1px hsl(220 60% 10% / 0.12);
+  --shadow-xl: 0px 2px 6px 0px hsl(220 60% 10% / 0.14), 0px 3px 5px -1px hsl(220 60% 10% / 0.14);
+  --shadow-2xl: 0px 3px 8px 0px hsl(220 60% 10% / 0.18);
 }
 
-/* Military theme glow effects */
-.military .glow-blue {
-  box-shadow: 0 0 20px oklch(0.70 0.15 220 / 0.3),
-              0 0 40px oklch(0.70 0.15 220 / 0.15),
-              0 0 60px oklch(0.70 0.15 220 / 0.08);
+/* Dark theme glow effects - desaturated for comfort */
+.dark .glow-blue {
+  box-shadow: 0 0 20px oklch(0.70 0.10 220 / 0.25),
+              0 0 40px oklch(0.70 0.10 220 / 0.12),
+              0 0 60px oklch(0.70 0.10 220 / 0.06);
 }
 
-/* Military theme custom scrollbar */
-.military ::-webkit-scrollbar-track {
-  background: oklch(0.20 0.008 85 / 0.3);
+/* Elevation utilities for dark mode - use instead of shadows for hierarchy */
+.dark .elevation-0 {
+  background-color: var(--elevation-0);
 }
 
-.military ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, 
-    oklch(0.70 0.15 220 / 0.6), 
-    oklch(0.75 0.12 200 / 0.6));
-  border: 2px solid oklch(0.12 0.008 85 / 0.3);
+.dark .elevation-1 {
+  background-color: var(--elevation-1);
 }
 
-.military ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, 
-    oklch(0.70 0.15 220 / 0.8), 
-    oklch(0.75 0.12 200 / 0.8));
+.dark .elevation-2 {
+  background-color: var(--elevation-2);
 }
 
-/* Military theme shimmer effect */
-.military .animate-shimmer {
-  background: linear-gradient(
-    90deg,
-    oklch(0.18 0.008 85 / 0.3) 0%,
-    oklch(0.22 0.01 85 / 0.5) 50%,
-    oklch(0.18 0.008 85 / 0.3) 100%
-  );
-  background-size: 200% 100%;
+.dark .elevation-3 {
+  background-color: var(--elevation-3);
+}
+
+.dark .elevation-4 {
+  background-color: var(--elevation-4);
+}
+
+.dark .elevation-5 {
+  background-color: var(--elevation-5);
+}
+
+/* School title text shadow - only in light mode for better readability */
+:root .school-title-light-shadow {
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8), 0 0 8px rgba(255, 255, 255, 0.4);
+}
+
+.dark .school-title-light-shadow {
+  text-shadow: none;
 }
 
 /* Blue accent utilities - work in all themes */
@@ -373,6 +325,21 @@
 
 /* Minimal Glassmorphism - Part of 30% Supporting Elements */
 @layer utilities {
+  /* 
+   * Design System Best Practices Applied:
+   * 
+   * DARK MODE (based on UX Misfit & Material Design guidelines):
+   * - Use dark grey (#121212 / oklch(0.12...)) instead of pure black
+   * - Desaturated colors to reduce eye strain and improve accessibility
+   * - Minimal shadows - prefer elevation-based hierarchy (higher = lighter)
+   * - Contrast ratio of at least 15.8:1 for body text
+   * 
+   * LIGHT MODE:
+   * - Vibrant, saturated colors work well
+   * - Shadows provide natural depth
+   * - High contrast for readability in daylight
+   */
+
   /* Very subtle glass effect - use sparingly */
   .glass {
     background: var(--card);
@@ -402,6 +369,16 @@
   .glow-orange {
     box-shadow: 0 0 20px var(--primary) / 0.15,
                 0 0 40px var(--primary) / 0.08;
+  }
+  
+  /* Light mode uses shadows, dark mode uses elevation - handle both */
+  .surface-elevated {
+    box-shadow: var(--shadow-md);
+  }
+  
+  .dark .surface-elevated {
+    box-shadow: none;
+    background-color: var(--elevation-2);
   }
   
   .animate-gradient {
@@ -503,11 +480,12 @@
   .dark .animate-shimmer {
     background: linear-gradient(
       90deg,
-      oklch(0.2330 0.0073 67.4563 / 0.3) 0%,
-      oklch(0.2330 0.0073 67.4563 / 0.5) 50%,
-      oklch(0.2330 0.0073 67.4563 / 0.3) 100%
+      oklch(0.18 0.008 85 / 0.3) 0%,
+      oklch(0.22 0.01 85 / 0.5) 50%,
+      oklch(0.18 0.008 85 / 0.3) 100%
     );
     background-size: 200% 100%;
+    animation: shimmer 1.5s ease-in-out infinite;
   }
   
   @keyframes fadeIn {
@@ -606,12 +584,66 @@
     }
   }
 
+  @keyframes popoverIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes popoverOut {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    to {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+  }
+
+  @keyframes popoverInScaled {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   [data-state="open"][data-side="top"] {
     animation: slideInFromBottom 0.2s ease-out;
   }
 
   [data-state="closed"][data-side="top"] {
     animation: slideOutToBottom 0.15s ease-in;
+  }
+
+  [data-state="open"][data-side="bottom"] {
+    animation: popoverIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  [data-state="closed"][data-side="bottom"] {
+    animation: popoverOut 0.15s ease-in;
+  }
+
+  .animate-popover-in {
+    animation: popoverIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .animate-popover-in-scaled {
+    animation: popoverInScaled 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
+  .scale-120 {
+    transform: scale(1.2);
+    transform-origin: top left;
   }
 
   /* Toast animations */
@@ -705,20 +737,20 @@
 
   /* Dark mode scrollbar */
   .dark ::-webkit-scrollbar-track {
-    background: oklch(0.2330 0.0073 67.4563 / 0.3);
+    background: oklch(0.20 0.008 85 / 0.3);
   }
   
   .dark ::-webkit-scrollbar-thumb {
     background: linear-gradient(180deg, 
-      oklch(0.7049 0.1867 47.6044 / 0.5), 
-      oklch(0.7952 0.1617 86.0468 / 0.5));
-    border: 2px solid oklch(0.2685 0.0063 34.2976 / 0.3);
+      oklch(0.70 0.15 220 / 0.6), 
+      oklch(0.75 0.12 200 / 0.6));
+    border: 2px solid oklch(0.12 0.008 85 / 0.3);
   }
   
   .dark ::-webkit-scrollbar-thumb:hover {
     background: linear-gradient(180deg, 
-      oklch(0.7049 0.1867 47.6044 / 0.7), 
-      oklch(0.7952 0.1617 86.0468 / 0.7));
+      oklch(0.70 0.15 220 / 0.8), 
+      oklch(0.75 0.12 200 / 0.8));
   }
 }
 

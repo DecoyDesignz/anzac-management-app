@@ -2,7 +2,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 
-type Theme = 'light' | 'military';
+type Theme = 'light' | 'dark';
 
 interface ThemeContextType {
   theme: Theme;
@@ -13,15 +13,15 @@ interface ThemeContextType {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  // Always start with military theme on both server and client
-  const [theme, setThemeState] = useState<Theme>('military');
+  // Always start with dark theme on both server and client
+  const [theme, setThemeState] = useState<Theme>('dark');
   const [mounted, setMounted] = useState(false);
 
   // After mounting, load the saved theme
   useEffect(() => {
     setMounted(true);
     const savedTheme = localStorage.getItem('anzac-theme') as Theme | null;
-    if (savedTheme === 'light' || savedTheme === 'military') {
+    if (savedTheme === 'light' || savedTheme === 'dark') {
       setThemeState(savedTheme);
     }
   }, []);
@@ -30,7 +30,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const root = document.documentElement;
     
     // Remove all theme classes
-    root.classList.remove('light', 'dark', 'military');
+    root.classList.remove('light', 'dark');
     
     // Add current theme class
     root.classList.add(theme);
