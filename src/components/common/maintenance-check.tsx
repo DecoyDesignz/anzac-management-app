@@ -32,6 +32,12 @@ export function MaintenanceCheck() {
         return
       }
 
+      // Allow everyone to access login page during maintenance
+      // so administrators can login
+      if (isOnLoginPage) {
+        return
+      }
+
       // Non-admins should be redirected to maintenance page
       if (!isOnMaintenancePage) {
         router.push("/maintenance")
