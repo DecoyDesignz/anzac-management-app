@@ -24,10 +24,9 @@ import { TimeInput } from "@/components/forms/time-input"
 import { Id } from "../../../../convex/_generated/dataModel"
 import { cn } from "@/lib/utils"
 import { isValidTime } from "@/lib/validation"
-import { formatTimeForDisplay, formatDateSydney, formatTimeSydney, formatTimeRangeSydney } from "@/lib/formatting"
+import { formatDateSydney, formatTimeRangeSydney } from "@/lib/formatting"
 import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
-import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
 
 export default function CalendarPage() {
   const [selectedMonth, setSelectedMonth] = useState(new Date())
@@ -488,16 +487,6 @@ export default function CalendarPage() {
       .sort((a, b) => a.startDate - b.startDate)
       .slice(0, 3)
   }, [allUpcomingEvents, currentMinute])
-
-  const getEventStatusColor = (status: string) => {
-    switch (status) {
-      case 'scheduled': return 'bg-secondary/50 border-border text-foreground'
-      case 'in_progress': return 'bg-primary/20 border-primary/30 text-primary'
-      case 'completed': return 'bg-muted/50 border-border text-muted-foreground'
-      case 'cancelled': return 'bg-muted/30 border-border text-muted-foreground'
-      default: return 'bg-muted/30 border-border text-muted-foreground'
-    }
-  }
 
   // Loading state
   if (!servers || !systemUsers) {

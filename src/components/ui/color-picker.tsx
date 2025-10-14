@@ -21,7 +21,7 @@ interface ColorPickerProps {
 
 const ColorPicker = forwardRef<
   HTMLInputElement,
-  Omit<ButtonProps, 'value' | 'onChange' | 'onBlur'> & ColorPickerProps & ButtonProps
+  Omit<ButtonProps, 'value' | 'onChange' | 'onBlur'> & ColorPickerProps
 >(
   (
     { disabled, value, onChange, onBlur, name, className, size, ...props },

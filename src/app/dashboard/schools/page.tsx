@@ -105,7 +105,7 @@ export default function SchoolsPage() {
   const selectedSchoolInstructorIds = selectedSchool?.instructors?.map(i => i._id) || []
 
   // Handler functions
-  const handleToggleInstructor = async (userId: Id<"systemUsers">, isChecked: boolean) => {
+  const handleToggleInstructor = async (userId: Id<"personnel">, isChecked: boolean) => {
     if (!selectedSchoolId) return
 
     try {
@@ -642,7 +642,7 @@ export default function SchoolsPage() {
             <div className="flex items-center gap-3">
               <ColorPicker
                 value={newSchoolColor || '#6b7280'}
-                onChange={(color) => setNewSchoolColor(color)}
+                onChange={(color: string) => setNewSchoolColor(color)}
               />
               <span className="text-sm text-muted-foreground">
                 {newSchoolColor || '#6b7280'}
@@ -686,7 +686,7 @@ export default function SchoolsPage() {
               <div className="flex items-center gap-3">
                 <ColorPicker
                   value={editingSchool.color || '#6b7280'}
-                  onChange={(color) => setEditingSchool({ ...editingSchool, color })}
+                  onChange={(color: string) => setEditingSchool({ ...editingSchool, color })}
                 />
                 <span className="text-sm text-muted-foreground">
                   {editingSchool.color || '#6b7280'}

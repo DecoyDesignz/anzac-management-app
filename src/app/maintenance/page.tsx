@@ -49,7 +49,7 @@ export default function MaintenancePage() {
             System Maintenance
           </h1>
           <p className="text-xl text-muted-foreground">
-            We'll be back shortly
+            We&apos;ll be back shortly
           </p>
         </div>
 

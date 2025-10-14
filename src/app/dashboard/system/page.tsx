@@ -74,11 +74,11 @@ type SchoolItem = {
 }
 
 type SystemUser = {
-  _id: Id<"systemUsers">
+  _id: Id<"personnel">
   name: string
   roles: string[]
-  isActive: boolean
-  requirePasswordChange: boolean
+  isActive?: boolean
+  requirePasswordChange?: boolean
 }
 
 function SortableRankItem({ rank, onEdit, onDelete }: {
@@ -214,14 +214,14 @@ export default function SystemManagementPage() {
   const [editingRankId, setEditingRankId] = useState<Id<"ranks"> | null>(null)
   const [editingQualId, setEditingQualId] = useState<Id<"qualifications"> | null>(null)
   const [editingSchoolId, setEditingSchoolId] = useState<Id<"schools"> | null>(null)
-  const [editingUserId, setEditingUserId] = useState<Id<"systemUsers"> | null>(null)
-  const [resetPasswordUserId, setResetPasswordUserId] = useState<Id<"systemUsers"> | null>(null)
+  const [editingUserId, setEditingUserId] = useState<Id<"personnel"> | null>(null)
+  const [resetPasswordUserId, setResetPasswordUserId] = useState<Id<"personnel"> | null>(null)
   const [resetPasswordUsername, setResetPasswordUsername] = useState("")
 
   // Delete confirmation states
   const [deleteQualId, setDeleteQualId] = useState<Id<"qualifications"> | null>(null)
   const [deleteSchoolId, setDeleteSchoolId] = useState<Id<"schools"> | null>(null)
-  const [deleteUserId, setDeleteUserId] = useState<Id<"systemUsers"> | null>(null)
+  const [deleteUserId, setDeleteUserId] = useState<Id<"personnel"> | null>(null)
 
   // Form states
   const [rankForm, setRankForm] = useState({ name: "", abbreviation: "" })
@@ -616,7 +616,7 @@ export default function SystemManagementPage() {
     }
   }
 
-  const handleDeleteUser = async (userId: Id<"systemUsers">) => {
+  const handleDeleteUser = async (userId: Id<"personnel">) => {
     try {
       await deleteUser({ userId })
     } catch (err: unknown) {
@@ -627,7 +627,7 @@ export default function SystemManagementPage() {
     }
   }
 
-  const handleToggleUserStatus = async (userId: Id<"systemUsers">) => {
+  const handleToggleUserStatus = async (userId: Id<"personnel">) => {
     try {
       await toggleUserStatus({ userId })
     } catch (err: unknown) {
@@ -2010,7 +2010,9 @@ export default function SystemManagementPage() {
           ) : ""
         }
         actionText="Delete"
-        onConfirm={() => deleteQualId && handleDeleteQualification(deleteQualId)}
+        onConfirm={() => {
+          if (deleteQualId) handleDeleteQualification(deleteQualId)
+        }}
       />
 
       <ConfirmationDialog
@@ -2019,7 +2021,9 @@ export default function SystemManagementPage() {
         title={`Delete ${schools?.find(s => s._id === deleteSchoolId)?.name}?`}
         description="This will remove all instructor assignments. Cannot delete if qualifications are assigned."
         actionText="Delete"
-        onConfirm={() => deleteSchoolId && handleDeleteSchool(deleteSchoolId)}
+        onConfirm={() => {
+          if (deleteQualId) handleDeleteQualification(deleteQualId)
+        }}
       />
 
       <ConfirmationDialog
@@ -2028,7 +2032,9 @@ export default function SystemManagementPage() {
         title={`Delete ${systemUsers?.find(u => u._id === deleteUserId)?.name}?`}
         description="This action cannot be undone. This will permanently delete the user account and remove all associated data including roles and instructor assignments."
         actionText="Delete"
-        onConfirm={() => deleteUserId && handleDeleteUser(deleteUserId)}
+        onConfirm={() => {
+          if (deleteQualId) handleDeleteQualification(deleteQualId)
+        }}
       />
     </div>
   )

@@ -421,7 +421,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
       return "flex flex-col cursor-default opacity-40 bg-muted/10 border-muted/20"
     }
     
-    let baseClasses = "flex flex-col cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
+    const baseClasses = "flex flex-col cursor-pointer transition-all duration-200 hover:shadow-md hover:scale-[1.02]"
     
     // Add subtle emphasis for days with events
     const eventEmphasis = hasEvents ? "ring-1 ring-accent/30 shadow-sm" : ""
