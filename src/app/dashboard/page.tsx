@@ -191,7 +191,7 @@ export default function DashboardPage() {
                           {/* System Roles */}
                           {promotion.hasSystemAccess && promotion.roles && promotion.roles.length > 0 && (
                             <div className="flex flex-wrap gap-1 mt-1">
-                              {promotion.roles.map((role) => {
+                              {promotion.roles.map((role: { name: string; displayName: string; color: string }) => {
                                 const adjustedColor = getThemeAwareColor(role.color, isDarkMode)
                                 return (
                                   <Badge 
