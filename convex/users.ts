@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { requireAuth, requireRole, UserRole, generateTemporaryPassword, validatePassword, getCurrentUser as getCurrentUserHelper } from "./helpers";
+import { requireAuth, requireRole, UserRole, generateTemporaryPassword, validatePassword } from "./helpers";
 import { Id, Doc } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 
@@ -33,21 +33,29 @@ export const getAllRoles = query({
 
 /**
  * Get the current authenticated user (returns null if not authenticated)
+ * Excludes passwordHash and passwordSalt for security
  */
 export const getCurrentUser = query({
-  args: {},
-  handler: async (ctx) => {
-    // Use getCurrentUser helper which returns null instead of throwing
-    const user = await getCurrentUserHelper(ctx);
-    return user;
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    // Get the user by ID
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return null;
+    }
+    // Exclude sensitive password fields
+    const { passwordHash, passwordSalt, ...safeUser } = user;
+    return safeUser;
   },
 });
 
 /**
- * Get a user by username/callSign (for authentication purposes)
- * This is used by NextAuth to authenticate users
+ * Internal query to get a user by username/callSign with password hash (for authentication)
+ * This is only accessible internally for password verification
  */
-export const getUserByUsername = query({
+export const getUserByUsernameInternal = internalQuery({
   args: { username: v.string() },
   handler: async (ctx, args) => {
     const person = await ctx.db
@@ -60,8 +68,31 @@ export const getUserByUsername = query({
 });
 
 /**
+ * Get a user by username/callSign (public query - excludes sensitive fields)
+ * This returns user information without passwordHash or passwordSalt
+ */
+export const getUserByUsername = query({
+  args: { username: v.string() },
+  handler: async (ctx, args) => {
+    const person = await ctx.db
+      .query("personnel")
+      .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
+      .first();
+    
+    if (!person) {
+      return null;
+    }
+    
+    // Exclude sensitive password fields from public query
+    const { passwordHash, passwordSalt, ...safePerson } = person;
+    return safePerson;
+  },
+});
+
+/**
  * Get a user by email (for backward compatibility)
  * @deprecated Use getUserByUsername instead
+ * Excludes passwordHash and passwordSalt for security
  */
 export const getUserByEmail = query({
   args: { email: v.string() },
@@ -71,7 +102,13 @@ export const getUserByEmail = query({
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
     
-    return person;
+    if (!person) {
+      return null;
+    }
+    
+    // Exclude sensitive password fields from public query
+    const { passwordHash, passwordSalt, ...safePerson } = person;
+    return safePerson;
   },
 });
 
@@ -80,6 +117,7 @@ export const getUserByEmail = query({
  */
 export const listUsers = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     role: v.optional(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
@@ -89,7 +127,7 @@ export const listUsers = query({
     )),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "super_admin");
+    await requireRole(ctx, args.userId, "super_admin");
 
     // Get all personnel with passwordHash (system access)
     const allPersonnel = await ctx.db.query("personnel").collect();
@@ -115,13 +153,20 @@ export const listUsers = query({
               q.eq("personnelId", user._id).eq("roleId", roleRecord._id)
             )
             .first();
-          return userRole ? user : null;
+          if (!userRole) return null;
+          // Exclude sensitive password fields
+          const { passwordHash, passwordSalt, ...safeUser } = user;
+          return safeUser;
         })
       );
       return usersWithRole.filter(user => user !== null);
     }
     
-    return usersWithAccess;
+    // Exclude sensitive password fields from all returned users
+    return usersWithAccess.map(user => {
+      const { passwordHash, passwordSalt, ...safeUser } = user;
+      return safeUser;
+    });
   },
 });
 
@@ -129,9 +174,11 @@ export const listUsers = query({
  * List all personnel with system access and their roles (Administrator and Super Admin only)
  */
 export const listUsersWithRoles = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireRole(ctx, "administrator");
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, args.userId, "administrator");
 
     // Get all personnel with passwordHash (system access)
     const allPersonnel = await ctx.db.query("personnel").order("desc").collect();
@@ -154,8 +201,10 @@ export const listUsersWithRoles = query({
           })
         );
         
+        // Exclude sensitive password fields
+        const { passwordHash, passwordSalt, ...safeUser } = user;
         return {
-          ...user,
+          ...safeUser,
           name: user.callSign, // For compatibility with frontend
           roles: rolesWithDetails,
         };
@@ -170,11 +219,19 @@ export const listUsersWithRoles = query({
  * Get a specific personnel member by ID
  */
 export const getUser = query({
-  args: { userId: v.id("personnel") },
+  args: { 
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel") // User ID to get
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
     const person = await ctx.db.get(args.userId);
-    return person;
+    if (!person) {
+      return null;
+    }
+    // Exclude sensitive password fields
+    const { passwordHash, passwordSalt, ...safePerson } = person;
+    return safePerson;
   },
 });
 
@@ -182,9 +239,12 @@ export const getUser = query({
  * Get user roles for a specific personnel member
  */
 export const getUserRoles = query({
-  args: { userId: v.id("personnel") },
+  args: { 
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel") // User ID to get roles for
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.requesterUserId);
 
     const personnelRoles = await ctx.db
       .query("userRoles")
@@ -216,6 +276,7 @@ export const getUserRoles = query({
  */
 export const createUser = mutation({
   args: {
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
     email: v.optional(v.string()),
     name: v.string(), // CallSign - must be unique
     roles: v.array(v.union(
@@ -227,7 +288,7 @@ export const createUser = mutation({
     )),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "super_admin");
+    await requireRole(ctx, args.requesterUserId, "super_admin");
 
     // Check if callSign already exists
     const existingPerson = await ctx.db
@@ -279,7 +340,8 @@ export const createUser = mutation({
  */
 export const updateUserRoles = mutation({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel"), // User ID to update
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
@@ -289,7 +351,7 @@ export const updateUserRoles = mutation({
     )),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
 
     // Prevent administrators from assigning super_admin role
     // (Only super_admins can assign super_admin role)
@@ -329,11 +391,12 @@ export const updateUserRoles = mutation({
  */
 export const updateUser = mutation({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel"), // User ID to update
     name: v.optional(v.string()), // CallSign
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
 
     const person = await ctx.db.get(args.userId);
     if (!person) {
@@ -368,9 +431,12 @@ export const updateUser = mutation({
  * Cannot deactivate Super Administrators
  */
 export const toggleUserStatus = mutation({
-  args: { userId: v.id("personnel") },
+  args: { 
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel") // User ID to toggle
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "super_admin");
+    await requireRole(ctx, args.requesterUserId, "super_admin");
 
     const person = await ctx.db.get(args.userId);
     if (!person) {
@@ -406,9 +472,12 @@ export const toggleUserStatus = mutation({
  * Note: This does NOT delete the personnel record, only removes system access
  */
 export const deleteUser = mutation({
-  args: { userId: v.id("personnel") },
+  args: { 
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel") // User ID to delete
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "super_admin");
+    await requireRole(ctx, args.requesterUserId, "super_admin");
 
     const person = await ctx.db.get(args.userId);
     if (!person) {
@@ -462,11 +531,12 @@ export const deleteUser = mutation({
  */
 export const assignInstructorToSchool = mutation({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel"), // Instructor user ID to assign
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
 
     // Verify person is an instructor
     const roles = await ctx.db.query("roles").collect();
@@ -510,11 +580,12 @@ export const assignInstructorToSchool = mutation({
  */
 export const removeInstructorFromSchool = mutation({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel"), // Instructor user ID to remove
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
 
     const assignment = await ctx.db
       .query("instructorSchools")
@@ -536,9 +607,12 @@ export const removeInstructorFromSchool = mutation({
  * Get schools assigned to an instructor
  */
 export const getInstructorSchools = query({
-  args: { userId: v.id("personnel") },
+  args: { 
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel") // Instructor user ID to get schools for
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.requesterUserId);
 
     const assignments = await ctx.db
       .query("instructorSchools")
@@ -558,17 +632,26 @@ export const getInstructorSchools = query({
 
 /**
  * Set personnel password hash (called from NextAuth or when creating users)
+ * @deprecated This mutation doesn't handle salt properly. Use userActions.createUserAccount or internal mutations instead.
  */
 export const setUserPassword = mutation({
   args: {
     userId: v.id("personnel"),
     passwordHash: v.string(),
+    passwordSalt: v.optional(v.string()), // Salt is optional for backward compatibility but should be provided
   },
   handler: async (ctx, args) => {
-    await ctx.db.patch(args.userId, {
+    const updateData: any = {
       passwordHash: args.passwordHash,
       lastPasswordChange: Date.now(),
-    });
+    };
+    
+    // Only update salt if provided (for backward compatibility)
+    if (args.passwordSalt) {
+      updateData.passwordSalt = args.passwordSalt;
+    }
+    
+    await ctx.db.patch(args.userId, updateData);
     
     return { success: true };
   },
@@ -648,6 +731,7 @@ export const createUserAccountInternal = internalMutation({
   args: {
     name: v.string(), // CallSign - must be unique
     passwordHash: v.string(),
+    passwordSalt: v.string(), // Unique salt for password hashing
     roles: v.array(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
@@ -677,6 +761,7 @@ export const createUserAccountInternal = internalMutation({
       joinDate: Date.now(),
       rankId: privateRank?._id,
       passwordHash: args.passwordHash,
+      passwordSalt: args.passwordSalt,
       isActive: true,
       requirePasswordChange: true,
       lastPasswordChange: Date.now(),
@@ -712,10 +797,12 @@ export const updatePassword = internalMutation({
   args: {
     userId: v.id("personnel"),
     newPasswordHash: v.string(),
+    newPasswordSalt: v.string(), // New unique salt for the password
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.userId, {
       passwordHash: args.newPasswordHash,
+      passwordSalt: args.newPasswordSalt,
       requirePasswordChange: false,
       lastPasswordChange: Date.now(),
     });
@@ -729,10 +816,12 @@ export const resetPassword = internalMutation({
   args: {
     userId: v.id("personnel"),
     newPasswordHash: v.string(),
+    newPasswordSalt: v.string(), // New unique salt for the password
   },
   handler: async (ctx, args) => {
     await ctx.db.patch(args.userId, {
       passwordHash: args.newPasswordHash,
+      passwordSalt: args.newPasswordSalt,
       requirePasswordChange: true, // User must change password on next login
       lastPasswordChange: Date.now(),
     });

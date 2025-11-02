@@ -7,6 +7,7 @@ import { requireAuth, requireRole } from "./helpers";
  */
 export const listEvents = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     startDate: v.number(),
     endDate: v.number(),
     status: v.optional(
@@ -19,7 +20,7 @@ export const listEvents = query({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     let events = await ctx.db
       .query("events")
@@ -92,9 +93,12 @@ export const listEvents = query({
  * Get a specific event with full details
  */
 export const getEvent = query({
-  args: { eventId: v.id("events") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    eventId: v.id("events")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const event = await ctx.db.get(args.eventId);
     if (!event) {
@@ -154,6 +158,7 @@ export const getEvent = query({
  */
 export const createEvent = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     title: v.string(),
     description: v.optional(v.string()),
     startDate: v.number(),
@@ -167,7 +172,7 @@ export const createEvent = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     // Verify event type exists (if provided)
     if (args.eventTypeId) {
@@ -259,6 +264,7 @@ export const createEvent = mutation({
  */
 export const updateEvent = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     eventId: v.id("events"),
     title: v.optional(v.string()),
     description: v.optional(v.string()),
@@ -279,7 +285,7 @@ export const updateEvent = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     const { eventId, ...updates } = args;
 
@@ -297,9 +303,12 @@ export const updateEvent = mutation({
  * Delete an event (Administrator only)
  */
 export const deleteEvent = mutation({
-  args: { eventId: v.id("events") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    eventId: v.id("events")
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Delete all participants
     const participants = await ctx.db
@@ -331,9 +340,12 @@ export const deleteEvent = mutation({
  * Clear event by booking code (Instructor or higher)
  */
 export const clearEventByCode = mutation({
-  args: { bookingCode: v.string() },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    bookingCode: v.string()
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     const event = await ctx.db
       .query("events")
@@ -377,12 +389,13 @@ export const clearEventByCode = mutation({
  */
 export const enrollPersonnel = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     eventId: v.id("events"),
     personnelId: v.id("personnel"),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     // Verify event exists
     const event = await ctx.db.get(args.eventId);
@@ -438,11 +451,12 @@ export const enrollPersonnel = mutation({
  */
 export const removePersonnel = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     eventId: v.id("events"),
     personnelId: v.id("personnel"),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     // Find enrollment
     const enrollment = await ctx.db
@@ -476,6 +490,7 @@ export const removePersonnel = mutation({
  */
 export const updateParticipantStatus = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     participantId: v.id("eventParticipants"),
     status: v.union(
       v.literal("enrolled"),
@@ -486,7 +501,7 @@ export const updateParticipantStatus = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     const { participantId, ...updates } = args;
 
@@ -504,9 +519,11 @@ export const updateParticipantStatus = mutation({
  * List all event types
  */
 export const listEventTypes = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
     return await ctx.db.query("eventTypes").collect();
   },
 });
@@ -516,10 +533,11 @@ export const listEventTypes = query({
  */
 export const listServers = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     activeOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     if (args.activeOnly) {
       return await ctx.db
@@ -536,9 +554,11 @@ export const listServers = query({
  * Get this week's schedule - all events for the current week
  */
 export const getWeekSchedule = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     // Calculate the start and end of the current week (Sunday to Saturday)
     const now = new Date();
@@ -607,9 +627,11 @@ export const getWeekSchedule = query({
  * Get next week's schedule - all events for the next week
  */
 export const getNextWeekSchedule = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     // Calculate the start and end of next week (Sunday to Saturday)
     const now = new Date();
@@ -679,9 +701,11 @@ export const getNextWeekSchedule = query({
  * Get the next upcoming event
  */
 export const getNextEvent = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     const now = Date.now();
     const oneWeekFromNow = now + 7 * 24 * 60 * 60 * 1000;

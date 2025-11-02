@@ -1,13 +1,13 @@
 "use client"
 
 import { useQuery } from "convex/react"
+import { useSession } from "next-auth/react"
 import { api } from "../../../convex/_generated/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { CheckCircle2, Circle, Award, ChevronDown, ChevronRight, X } from "lucide-react"
+import { CheckCircle2, Award, ChevronDown, ChevronRight, X } from "lucide-react"
 import { useState } from "react"
-import { cn, getThemeAwareColor, getTextColor } from "@/lib/utils"
+import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { Id } from "../../../convex/_generated/dataModel"
 import { useTheme } from "@/providers/theme-provider"
 
@@ -22,22 +22,35 @@ export function PersonnelQualifications({
   compact = false,
   onRemove 
 }: PersonnelQualificationsProps) {
+  const { data: session } = useSession()
   const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set())
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
   
-  const personnel = useQuery(api.personnel.getPersonnelDetails, { 
-    personnelId: personnelId as Id<"personnel"> 
-  })
-  const schools = useQuery(api.schools.listSchools, {})
-  const allQualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
+  const personnel = useQuery(
+    api.personnel.getPersonnelDetails,
+    session?.user?.id ? {
+      userId: session.user.id as Id<"personnel">,
+      personnelId: personnelId as Id<"personnel">,
+      requesterUsername: session.user.name,
+      requesterRole: session.user.role
+    } : "skip"
+  )
+  const schools = useQuery(
+    api.schools.listSchools,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const allQualifications = useQuery(
+    api.qualifications.listQualificationsWithCounts,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
 
   if (!personnel || !schools || !allQualifications) {
     return <div className="text-sm text-muted-foreground">Loading qualifications...</div>
   }
 
   const personnelQualIds = new Set(
-    personnel.qualifications?.map(q => q._id) || []
+    personnel.qualifications?.map((q: { _id: Id<"qualifications"> }) => q._id) || []
   )
 
   // Group qualifications by school - only show qualifications the person actually has
@@ -152,7 +165,7 @@ export function PersonnelQualifications({
                 {isExpanded && (
                   <div className="border-t bg-muted/20 p-3 space-y-2">
                     {qualifications.map(qual => {
-                      const qualData = personnel.qualifications?.find(q => q._id === qual._id)
+                      const qualData = personnel.qualifications?.find((q: { _id: Id<"qualifications"> }) => q._id === qual._id)
                       
                       return (
                         <div 

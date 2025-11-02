@@ -1,5 +1,5 @@
 import { QueryCtx, MutationCtx } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import { Id, Doc } from "./_generated/dataModel";
 
 // Role hierarchy for permission checking
 export type UserRole = "super_admin" | "administrator" | "game_master" | "instructor" | "member";
@@ -20,38 +20,93 @@ export async function getUser(ctx: QueryCtx | MutationCtx, userId: Id<"personnel
 }
 
 /**
- * Get the current authenticated user
- * Note: With NextAuth, authentication is handled client-side
- * This returns null - use NextAuth session on the client
+ * Get the authenticated user by their ID
+ * Verifies the user exists, has system access, and is active
+ * @throws Error if user is not found, inactive, or doesn't have system access
  */
-export async function getCurrentUser(ctx: QueryCtx | MutationCtx) {
-  // TODO: Implement proper JWT verification with NextAuth
-  // For now, authentication is handled by Next.js middleware
-  return null;
+export async function getAuthenticatedUser(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"personnel"> | string
+): Promise<Doc<"personnel">> {
+  const user = await ctx.db.get(userId as Id<"personnel">);
+  
+  if (!user) {
+    throw new Error("User not found");
+  }
+  
+  // Verify user has system access (passwordHash exists)
+  if (!user.passwordHash) {
+    throw new Error("User does not have system access");
+  }
+  
+  // Verify user is active
+  if (user.isActive === false) {
+    throw new Error("User account is inactive");
+  }
+  
+  return user;
 }
 
 /**
- * Placeholder for authentication check
- * TODO: Implement proper authentication verification
+ * Require authentication - verifies user exists, has system access, and is active
+ * @param ctx Convex context
+ * @param userId User ID from NextAuth session (must be passed from client)
+ * @returns Authenticated user document
+ * @throws Error if authentication fails
  */
-export async function requireAuth(ctx: QueryCtx | MutationCtx): Promise<any> {
-  // TODO: Verify NextAuth JWT token
-  // For now, we rely on Next.js middleware for authentication
-  // This should be called from authenticated routes only
-  return { _id: "" as Id<"personnel">, role: "administrator" as UserRole, isActive: true, email: "", callSign: "", requirePasswordChange: false };
+export async function requireAuth(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"personnel"> | string
+): Promise<Doc<"personnel">> {
+  if (!userId) {
+    throw new Error("Authentication required: userId must be provided");
+  }
+  
+  return await getAuthenticatedUser(ctx, userId);
 }
 
 /**
- * Placeholder for role-based authorization
- * TODO: Implement proper role verification
+ * Require a specific role or higher
+ * Verifies user exists, is active, and has the required role
+ * @param ctx Convex context
+ * @param userId User ID from NextAuth session
+ * @param minimumRole Minimum role required (role hierarchy is enforced)
+ * @returns Authenticated user document
+ * @throws Error if user doesn't have required role
  */
 export async function requireRole(
   ctx: QueryCtx | MutationCtx,
+  userId: Id<"personnel"> | string,
   minimumRole: UserRole
-): Promise<any> {
-  // TODO: Verify user role from NextAuth session
-  // For now, we rely on Next.js middleware for authorization
-  return { _id: "" as Id<"personnel">, role: minimumRole, isActive: true, email: "", callSign: "", requirePasswordChange: false };
+): Promise<Doc<"personnel">> {
+  // First verify authentication
+  const user = await requireAuth(ctx, userId);
+  
+  // Get user's roles from database
+  const personnelRoles = await ctx.db
+    .query("userRoles")
+    .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
+    .collect();
+  
+  const roles = await ctx.db.query("roles").collect();
+  const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+  const roleNames = personnelRoles
+    .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+    .filter(Boolean) as string[];
+  
+  // Check if user has the minimum required role (using hierarchy)
+  const minimumRoleLevel = roleHierarchy[minimumRole];
+  
+  // Check each role the user has
+  for (const roleName of roleNames) {
+    const roleLevel = roleHierarchy[roleName as UserRole];
+    if (roleLevel >= minimumRoleLevel) {
+      return user; // User has sufficient role
+    }
+  }
+  
+  // User doesn't have required role
+  throw new Error(`Access denied: Requires ${minimumRole} role or higher`);
 }
 
 /**
@@ -62,16 +117,14 @@ export async function requireRole(
  */
 export async function canAwardQualification(
   ctx: QueryCtx | MutationCtx,
-  personnelId: Id<"personnel">,
+  userId: Id<"personnel"> | string,
   qualificationId: Id<"qualifications">
 ): Promise<boolean> {
-  // TODO: Remove this check once proper auth is implemented
-  // If personnelId is empty (placeholder auth), allow the operation since auth is handled by middleware
-  if (!personnelId || personnelId === ("" as Id<"personnel">)) {
-    return true;
+  if (!userId) {
+    return false;
   }
 
-  const person = await ctx.db.get(personnelId);
+  const person = await ctx.db.get(userId as Id<"personnel">);
   if (!person || !person.isActive) {
     return false;
   }
@@ -79,7 +132,7 @@ export async function canAwardQualification(
   // Get user roles
   const personnelRoles = await ctx.db
     .query("userRoles")
-    .withIndex("by_personnel", (q) => q.eq("personnelId", personnelId))
+    .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
     .collect();
 
   const roles = await ctx.db.query("roles").collect();
@@ -107,7 +160,7 @@ export async function canAwardQualification(
     const assignment = await ctx.db
       .query("instructorSchools")
       .withIndex("by_personnel_and_school", (q) =>
-        q.eq("personnelId", personnelId).eq("schoolId", qualification.schoolId)
+        q.eq("personnelId", person._id).eq("schoolId", qualification.schoolId)
       )
       .first();
 
@@ -122,11 +175,15 @@ export async function canAwardQualification(
  */
 export async function getInstructorSchools(
   ctx: QueryCtx,
-  personnelId: Id<"personnel">
+  userId: Id<"personnel"> | string
 ): Promise<Id<"schools">[]> {
+  if (!userId) {
+    return [];
+  }
+  
   const assignments = await ctx.db
     .query("instructorSchools")
-    .withIndex("by_personnel", (q) => q.eq("personnelId", personnelId))
+    .withIndex("by_personnel", (q) => q.eq("personnelId", userId as Id<"personnel">))
     .collect();
 
   return assignments.map((a) => a.schoolId);
@@ -140,16 +197,14 @@ export async function getInstructorSchools(
  */
 export async function canManageSchool(
   ctx: QueryCtx | MutationCtx,
-  personnelId: Id<"personnel">,
+  userId: Id<"personnel"> | string,
   schoolId: Id<"schools">
 ): Promise<boolean> {
-  // TODO: Remove this check once proper auth is implemented
-  // If personnelId is empty (placeholder auth), allow the operation since auth is handled by middleware
-  if (!personnelId || personnelId === ("" as Id<"personnel">)) {
-    return true;
+  if (!userId) {
+    return false;
   }
 
-  const person = await ctx.db.get(personnelId);
+  const person = await ctx.db.get(userId as Id<"personnel">);
   if (!person || !person.isActive) {
     return false;
   }
@@ -157,7 +212,7 @@ export async function canManageSchool(
   // Get personnel roles
   const personnelRoles = await ctx.db
     .query("userRoles")
-    .withIndex("by_personnel", (q) => q.eq("personnelId", personnelId))
+    .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
     .collect();
 
   const roles = await ctx.db.query("roles").collect();
@@ -179,7 +234,7 @@ export async function canManageSchool(
     const assignment = await ctx.db
       .query("instructorSchools")
       .withIndex("by_personnel_and_school", (q) =>
-        q.eq("personnelId", personnelId).eq("schoolId", schoolId)
+        q.eq("personnelId", person._id).eq("schoolId", schoolId)
       )
       .first();
 
@@ -197,6 +252,38 @@ export function hasAnyRole(userRole: UserRole, allowedRoles: UserRole[]): boolea
 }
 
 /**
+ * Check if a role is considered a staff role
+ * Staff roles are: super_admin, administrator, instructor, game_master
+ */
+export function isStaffRole(roleName: string): boolean {
+  const staffRoles: UserRole[] = ["super_admin", "administrator", "instructor", "game_master"];
+  return staffRoles.includes(roleName as UserRole);
+}
+
+/**
+ * Check if user has staff role by querying their roles
+ */
+export async function isStaff(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"personnel"> | string
+): Promise<boolean> {
+  if (!userId) {
+    return false;
+  }
+
+  const personnelRoles = await ctx.db
+    .query("userRoles")
+    .withIndex("by_personnel", (q) => q.eq("personnelId", userId as Id<"personnel">))
+    .collect();
+
+  const roles = await ctx.db.query("roles").collect();
+  const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+  const roleNames = personnelRoles.map(ur => ur.roleId ? roleMap.get(ur.roleId) : null).filter(Boolean);
+
+  return roleNames.some(roleName => roleName && isStaffRole(roleName));
+}
+
+/**
  * Format user role for display
  */
 export function formatRole(role: UserRole): string {
@@ -208,6 +295,32 @@ export function formatRole(role: UserRole): string {
     member: "Member",
   };
   return roleMap[role];
+}
+
+/**
+ * Generate a cryptographically secure random salt
+ * Uses crypto.randomBytes for Node.js environments
+ */
+export function generateSecureSalt(): string {
+  // For Node.js "use node" functions, we can use crypto.randomBytes
+  // For regular Convex functions, we'll use a CSPRNG fallback
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    // Browser or modern Node.js environment
+    const saltBytes = new Uint8Array(32); // 32 bytes = 256 bits
+    crypto.getRandomValues(saltBytes);
+    return Array.from(saltBytes)
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  } else {
+    // Fallback for older environments - should not be used in production
+    // but included for completeness
+    let salt = '';
+    const chars = '0123456789abcdef';
+    for (let i = 0; i < 64; i++) { // 64 hex chars = 32 bytes
+      salt += chars[Math.floor(Math.random() * chars.length)];
+    }
+    return salt;
+  }
 }
 
 /**

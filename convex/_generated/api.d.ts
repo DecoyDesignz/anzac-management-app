@@ -23,6 +23,7 @@ import type * as passwordMigration from "../passwordMigration.js";
 import type * as personnel from "../personnel.js";
 import type * as qualifications from "../qualifications.js";
 import type * as ranks from "../ranks.js";
+import type * as rateLimiting from "../rateLimiting.js";
 import type * as schools from "../schools.js";
 import type * as seed from "../seed.js";
 import type * as seedActions from "../seedActions.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   personnel: typeof personnel;
   qualifications: typeof qualifications;
   ranks: typeof ranks;
+  rateLimiting: typeof rateLimiting;
   schools: typeof schools;
   seed: typeof seed;
   seedActions: typeof seedActions;

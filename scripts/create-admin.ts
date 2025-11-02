@@ -6,7 +6,7 @@
  * npm install --save-dev ts-node
  */
 
-import { scrypt } from "crypto";
+import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 
 const scryptAsync = promisify(scrypt);
@@ -20,8 +20,8 @@ async function main() {
     role: "super_admin" as const,
   };
 
-  // Hash the password using scrypt
-  const salt = "anzac-management-salt";
+  // Generate a unique cryptographically secure salt for this user
+  const salt = randomBytes(32).toString('hex'); // 32 bytes = 256 bits, hex encoded
   const passwordHashBuffer = await scryptAsync(adminUser.password, salt, 64) as Buffer;
   const passwordHash = passwordHashBuffer.toString('hex');
 
@@ -30,18 +30,19 @@ async function main() {
   console.log(`Email: ${adminUser.email}`);
   console.log(`Name: ${adminUser.name}`);
   console.log(`Role: ${adminUser.role}`);
-  console.log(`Password Hash: ${passwordHash}\n`);
+  console.log(`Password Hash: ${passwordHash}`);
+  console.log(`Password Salt: ${salt}\n`);
   
   console.log("Next steps:");
   console.log("1. Go to your Convex dashboard: https://dashboard.convex.dev");
   console.log("2. Navigate to your project > Data");
-  console.log("3. Open the 'systemUsers' table");
+  console.log("3. Open the 'personnel' table (or 'systemUsers' if using legacy table)");
   console.log("4. Click 'Add Document'");
   console.log("5. Add the following fields:");
+  console.log(`   - callSign: "${adminUser.name}"`);
   console.log(`   - email: "${adminUser.email}"`);
-  console.log(`   - name: "${adminUser.name}"`);
-  console.log(`   - role: "${adminUser.role}"`);
   console.log(`   - passwordHash: "${passwordHash}"`);
+  console.log(`   - passwordSalt: "${salt}"`);
   console.log(`   - isActive: true`);
   console.log(`   - requirePasswordChange: false`);
   console.log(`   - lastPasswordChange: ${Date.now()}`);

@@ -5,14 +5,6 @@ import { usePathname, useRouter } from "next/navigation"
 import { signOut, useSession } from "next-auth/react"
 import { Button } from "@/components/ui/button"
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -21,7 +13,7 @@ import { cn } from "@/lib/utils"
 import { useSidebar } from "@/providers/sidebar-provider"
 import { useTheme } from "@/providers/theme-provider"
 import { useToast } from "@/hooks/use-toast"
-import { LayoutDashboard, Users, Settings2, Wrench, ChevronLeft, ChevronRight, MoreVertical, LogOut, BarChart3, Star, MessageCircle, Mail, ChevronDown, Search, HelpCircle, Calendar, GraduationCap, Award, UserCheck, Shield, Sun, Moon } from "lucide-react"
+import { LayoutDashboard, Users, Settings2, ChevronLeft, ChevronRight, MoreVertical, LogOut, ChevronDown, HelpCircle, Calendar, GraduationCap, Award, Shield, Sun, Moon } from "lucide-react"
 
 const navigation = [
   { 
@@ -72,12 +64,6 @@ const navigation = [
     hasDropdown: false,
     adminOnly: true
   },
-]
-
-const projects = [
-  "OPTION",
-  "CASE", 
-  "LOCAL"
 ]
 
 export function Sidebar() {

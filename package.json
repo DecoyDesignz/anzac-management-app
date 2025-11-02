@@ -12,7 +12,8 @@
     "create-admin": "npx tsx scripts/create-admin.ts",
     "reset-admin-password": "npx tsx scripts/reset-admin-password.ts",
     "reset-admin-password:auto": "npx tsx scripts/reset-admin-password-auto.ts",
-    "migrate-passwords": "npx tsx scripts/run-password-migration.ts"
+    "migrate-passwords": "npx tsx scripts/run-password-migration.ts",
+    "verify-deployment": "npx tsx scripts/verify-deployment-ready.ts"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

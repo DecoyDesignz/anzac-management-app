@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useMemo } from "react"
 import { useQuery, useMutation } from "convex/react"
+import { useSession } from "next-auth/react"
 import { api } from "../../../../convex/_generated/api"
+import { Id } from "../../../../convex/_generated/dataModel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -21,7 +23,6 @@ import { EventCalendar } from "@/components/dashboard/event-calendar"
 import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
 import { FormFieldWrapper } from "@/components/forms/form-field-wrapper"
 import { TimeInput } from "@/components/forms/time-input"
-import { Id } from "../../../../convex/_generated/dataModel"
 import { cn } from "@/lib/utils"
 import { isValidTime } from "@/lib/validation"
 import { formatDateSydney, formatTimeRangeSydney } from "@/lib/formatting"
@@ -29,6 +30,7 @@ import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
 
 export default function CalendarPage() {
+  const { data: session } = useSession()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -67,8 +69,14 @@ export default function CalendarPage() {
   })
 
   // Fetch data for form and upcoming events
-  const servers = useQuery(api.events.listServers, { activeOnly: true })
-  const systemUsers = useQuery(api.users.listUsersWithRoles, {})
+  const servers = useQuery(
+    api.events.listServers,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel">, activeOnly: true } : "skip"
+  )
+  const systemUsers = useQuery(
+    api.users.listUsersWithRoles,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   
   // Memoize the date range to prevent infinite re-renders
   // Update every minute to keep it relatively fresh
@@ -85,13 +93,19 @@ export default function CalendarPage() {
   const upcomingEventsDateRange = useMemo(() => {
     const now = currentMinute * 60000 // Convert back to milliseconds
     return {
+      userId: session?.user?.id as Id<"personnel"> | undefined,
       startDate: now,
       endDate: now + (30 * 24 * 60 * 60 * 1000) // 30 days from now
     }
-  }, [currentMinute])
+  }, [currentMinute, session?.user?.id])
   
   // Get all upcoming events (current time to 30 days out)
-  const allUpcomingEvents = useQuery(api.events.listEvents, upcomingEventsDateRange)
+  const allUpcomingEvents = useQuery(
+    api.events.listEvents,
+    session?.user?.id && upcomingEventsDateRange.userId
+      ? { userId: upcomingEventsDateRange.userId, startDate: upcomingEventsDateRange.startDate, endDate: upcomingEventsDateRange.endDate }
+      : "skip"
+  )
 
   // Mutations
   const createEvent = useMutation(api.events.createEvent)
@@ -202,7 +216,11 @@ export default function CalendarPage() {
       const startTimestamp = sydneyTimeToUTC(year, month, day, startHour, startMinute)
       const endTimestamp = sydneyTimeToUTC(year, month, day, endHour, endMinute)
       
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateEvent({
+        userId: session.user.id as Id<"personnel">,
         eventId: (selectedEvent as { _id: Id<"events"> })._id,
         title: editForm.title,
         startDate: startTimestamp,
@@ -393,7 +411,11 @@ export default function CalendarPage() {
       const prefix = eventForm.eventCategory === "training" ? "Training: " : "Operation: "
       const finalTitle = eventForm.title.startsWith(prefix) ? eventForm.title : prefix + eventForm.title
       
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createEvent({
+        userId: session.user.id as Id<"personnel">,
         title: finalTitle,
         startDate: startTimestamp,
         endDate: endTimestamp,
@@ -435,7 +457,13 @@ export default function CalendarPage() {
     setClearFormError(null)
     
     try {
-      await clearEventByCode({ bookingCode: clearCode })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await clearEventByCode({
+        userId: session.user.id as Id<"personnel">,
+        bookingCode: clearCode
+      })
       setClearModalOpen(false)
       setClearCode("")
       setClearFormError(null)

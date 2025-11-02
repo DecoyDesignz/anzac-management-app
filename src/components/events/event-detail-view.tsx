@@ -3,8 +3,8 @@
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
-import { Clock, Server, GraduationCap, Gamepad2, Edit, Trash2 } from "lucide-react"
-import { Personnel, getPersonnelDisplayName } from "./personnel-utils"
+import { GraduationCap, Gamepad2, Edit, Trash2 } from "lucide-react"
+import { getPersonnelDisplayName } from "./personnel-utils"
 import { EventType } from "./event-card"
 
 interface EventDetailViewProps {

@@ -6,15 +6,12 @@ import { useSession } from "next-auth/react"
 import { api } from "../../../convex/_generated/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Label } from "@/components/ui/label"
 import { 
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { Clock, Trash2, Edit, Users, Server, GraduationCap, Gamepad2 } from "lucide-react"
 import { Id } from "../../../convex/_generated/dataModel"
 import { EventCard, EventDetailView, EventType } from "@/components/events"
 import { MobileMonthCalendar } from "./mobile-month-calendar"
@@ -33,7 +30,7 @@ interface EventCalendarProps {
 
 // EventCard is now imported from @/components/events
 
-export function EventCalendar({ selectedWeek = new Date(), onWeekChange, bookingModalOpen, onBookingModalOpenChange, onEditEvent, onBookingWithDate }: EventCalendarProps) {
+export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBookingModalOpenChange, onEditEvent, onBookingWithDate }: EventCalendarProps) {
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [selectedEvent, setSelectedEvent] = useState<EventType | null>(null)
   const [dayEventsModalOpen, setDayEventsModalOpen] = useState(false)
@@ -73,13 +70,18 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
   }
 
   // Fetch data based on view mode
-  const events = useQuery(api.events.listEvents, viewMode === 'week' ? {
-    startDate: getWeekStart(selectedWeek).getTime(),
-    endDate: getWeekEnd(selectedWeek).getTime()
-  } : {
-    startDate: getMonthStart(selectedWeek).getTime(),
-    endDate: getMonthEnd(selectedWeek).getTime()
-  })
+  const events = useQuery(
+    api.events.listEvents,
+    session?.user?.id ? (viewMode === 'week' ? {
+      userId: session.user.id as Id<"personnel">,
+      startDate: getWeekStart(selectedWeek).getTime(),
+      endDate: getWeekEnd(selectedWeek).getTime()
+    } : {
+      userId: session.user.id as Id<"personnel">,
+      startDate: getMonthStart(selectedWeek).getTime(),
+      endDate: getMonthEnd(selectedWeek).getTime()
+    }) : "skip"
+  )
 
   // Debug logging for events
   if (viewMode === 'month' && events) {
@@ -87,7 +89,6 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
   }
 
   // Mutations
-  const deleteEvent = useMutation(api.events.deleteEvent)
   const clearEventByCode = useMutation(api.events.clearEventByCode)
 
   // Helper functions
@@ -155,15 +156,6 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
     
     // Create a simple date for the last day of the month
     return new Date(year, month, lastDay, 23, 59, 59, 999)
-  }
-
-  function formatTime(timestamp: number): string {
-    return new Date(timestamp).toLocaleTimeString('en-US', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      hour12: false,
-      timeZone: 'Australia/Sydney'
-    })
   }
 
   function formatDate(timestamp: number): string {
@@ -245,43 +237,6 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
     })
 
     return groups
-  }
-
-  // Get date for a specific day (in Sydney timezone)
-  const getDateForDay = (dayIndex: number) => {
-    const weekStart = getWeekStart(selectedWeek)
-    const targetDate = new Date(weekStart)
-    targetDate.setDate(weekStart.getDate() + dayIndex)
-    
-    // Return the date adjusted for display
-    return targetDate
-  }
-
-  // Get day of week name for a specific day
-  const getDayOfWeekName = (dayIndex: number) => {
-    const date = getDateForDay(dayIndex)
-    return date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Australia/Sydney' })
-  }
-
-  // Get day of week name for a specific day in month view
-  const getDayOfWeekNameForMonth = (dayOfMonth: number) => {
-    const date = getDateForDayInMonth(dayOfMonth)
-    return date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Australia/Sydney' })
-  }
-
-  // Get number of days in the selected month
-  const getDaysInMonth = () => {
-    const monthStart = getMonthStart(selectedWeek)
-    const year = monthStart.getFullYear()
-    const month = monthStart.getMonth()
-    return new Date(year, month + 1, 0).getDate()
-  }
-
-  // Get the first day of the month (0-6, where 0=Sunday, 6=Saturday)
-  const getFirstDayOfMonth = () => {
-    const monthStart = getMonthStart(selectedWeek)
-    const dayOfWeek = monthStart.getDay()
-    return dayOfWeek // 0=Sunday, 1=Monday, ..., 6=Saturday
   }
 
   // Get all days to display in calendar grid (including overflow from prev/next months)
@@ -389,16 +344,6 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
     return filteredEvents
   }
 
-  // Get date for a specific day in month view (in Sydney timezone)
-  const getDateForDayInMonth = (dayOfMonth: number) => {
-    const monthStart = getMonthStart(selectedWeek)
-    const year = monthStart.getFullYear()
-    const month = monthStart.getMonth()
-    
-    // Create the target date (day of month)
-    return new Date(year, month, dayOfMonth)
-  }
-
   // Check if a date is today
   const isToday = (date: Date) => {
     const today = new Date()
@@ -469,7 +414,13 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, booking
 
   const handleClearEvent = async (bookingCode: string) => {
     try {
-      await clearEventByCode({ bookingCode })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await clearEventByCode({
+        userId: session.user.id as Id<"personnel">,
+        bookingCode
+      })
       setEditModalOpen(false)
     } catch (error) {
       console.error("Failed to clear event:", error)

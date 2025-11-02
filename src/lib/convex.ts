@@ -1,13 +1,8 @@
 import { ConvexReactClient } from "convex/react";
+import { getEnvVar } from "./env";
 
-// Get the Convex URL from environment variables
-const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-
-if (!convexUrl) {
-  throw new Error(
-    "NEXT_PUBLIC_CONVEX_URL is not set. Run `npx convex dev` to set it up."
-  );
-}
+// Validate and get the Convex URL from environment variables at module load time
+const convexUrl = getEnvVar("NEXT_PUBLIC_CONVEX_URL");
 
 export const convex = new ConvexReactClient(convexUrl);
 

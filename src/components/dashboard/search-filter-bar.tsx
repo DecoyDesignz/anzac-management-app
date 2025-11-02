@@ -1,15 +1,15 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState } from "react"
 import { useQuery } from "convex/react"
 import { api } from "../../../convex/_generated/api"
+import { Id } from "../../../convex/_generated/dataModel"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { 
   Tabs, 
-  TabsContent, 
   TabsList, 
   TabsTrigger 
 } from "@/components/ui/tabs"
@@ -33,6 +33,7 @@ export type SortOrder = "asc" | "desc"
 export type SystemRole = "game_master" | "instructor" | "administrator"
 
 interface SearchFilterBarProps {
+  userId: Id<"personnel"> | null // User ID from NextAuth session
   searchTerm: string
   onSearchChange: (term: string) => void
   filterMode: FilterMode
@@ -51,6 +52,7 @@ interface SearchFilterBarProps {
 }
 
 export function SearchFilterBar({
+  userId,
   searchTerm,
   onSearchChange,
   filterMode,
@@ -71,10 +73,15 @@ export function SearchFilterBar({
   const [schoolFilterOpen, setSchoolFilterOpen] = useState(false)
   const [roleFilterOpen, setRoleFilterOpen] = useState(false)
 
-  // Fetch data for filters
-  const ranks = useQuery(api.ranks.listRanks, {})
-  const schools = useQuery(api.schools.listSchools, {})
-  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
+  // Fetch data for filters - only if userId is available
+  const ranks = useQuery(
+    api.ranks.listRanks,
+    userId ? { userId } : "skip"
+  )
+  const schools = useQuery(
+    api.schools.listSchools,
+    userId ? { userId } : "skip"
+  )
 
   // Count active filters
   const activeFiltersCount = selectedRanks.length + (selectedSchools?.length || 0) + (selectedRoles?.length || 0)

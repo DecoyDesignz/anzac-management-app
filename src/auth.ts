@@ -1,7 +1,14 @@
 import NextAuth from "next-auth"
 import Credentials from "next-auth/providers/credentials"
-import { fetchQuery, fetchAction } from "convex/nextjs"
+import { fetchAction } from "convex/nextjs"
 import { api } from "../convex/_generated/api"
+import { getEnvVar } from "@/lib/env"
+
+// Validate required environment variables at module load time
+// This ensures the application fails fast with clear errors if env vars are missing
+// Note: auth.ts is server-side only, so both vars are validated here
+const CONVEX_URL = getEnvVar("NEXT_PUBLIC_CONVEX_URL")
+const NEXTAUTH_SECRET = getEnvVar("NEXTAUTH_SECRET", undefined, true) // Server-only
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [
@@ -11,20 +18,33 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         username: { label: "Username", type: "text" },
         password: { label: "Password", type: "password" },
       },
-      async authorize(credentials) {
+      async authorize(credentials, request) {
         if (!credentials?.username || !credentials?.password) {
           throw new Error("Please provide both username and password")
         }
 
+        // Extract IP address from request headers for rate limiting
+        // Try common headers that proxies/load balancers use
+        const forwarded = request?.headers?.get("x-forwarded-for");
+        const realIp = request?.headers?.get("x-real-ip");
+        const cfConnectingIp = request?.headers?.get("cf-connecting-ip");
+        
+        // Get the first IP from the forwarded header (in case of multiple proxies)
+        const ipAddress = forwarded?.split(",")[0]?.trim() || 
+                          realIp || 
+                          cfConnectingIp || 
+                          undefined;
+
         try {
-          // Verify credentials using Convex action
+          // Verify credentials using Convex action with rate limiting
           const result = await fetchAction(
             api.userActions.verifyCredentials,
             { 
               username: credentials.username as string,
-              password: credentials.password as string
+              password: credentials.password as string,
+              ipAddress: ipAddress,
             },
-            { url: process.env.NEXT_PUBLIC_CONVEX_URL! }
+            { url: CONVEX_URL }
           )
 
           if (!result.success || !result.user) {
@@ -71,6 +91,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: NEXTAUTH_SECRET,
 })
 

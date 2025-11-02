@@ -14,7 +14,7 @@
  *   CONVEX_DEPLOY_KEY=your-deploy-key
  */
 
-import { scrypt } from "crypto";
+import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import * as readline from "readline";
 
@@ -115,7 +115,8 @@ async function main() {
     newPassword = generateSecurePassword(16);
   }
 
-  const salt = "anzac-management-salt";
+  // Generate a unique cryptographically secure salt for this password reset
+  const salt = randomBytes(32).toString('hex'); // 32 bytes = 256 bits, hex encoded
   const passwordHashBuffer = await scryptAsync(newPassword, salt, 64) as Buffer;
   const passwordHash = passwordHashBuffer.toString('hex');
 
@@ -131,15 +132,18 @@ async function main() {
   console.log(`Username: ${adminUsername}`);
   console.log(`Password: ${newPassword}`);
   console.log(`Password Hash: ${passwordHash}`);
+  console.log(`Password Salt: ${salt}`);
   console.log("─────────────────────────────────────────────────────────────\n");
 
   console.log("Please follow the manual reset instructions:\n");
   console.log("1. Go to: https://dashboard.convex.dev");
-  console.log("2. Navigate to: Your Project → Data → systemUsers");
+  console.log("2. Navigate to: Your Project → Data → personnel (or systemUsers)");
   console.log(`3. Find user: "${adminUsername}"`);
-  console.log("4. Update passwordHash with the value above");
-  console.log("5. Set requirePasswordChange to false");
-  console.log(`6. Set lastPasswordChange to ${Date.now()}\n`);
+  console.log("4. Update the following fields:");
+  console.log(`   passwordHash: "${passwordHash}"`);
+  console.log(`   passwordSalt: "${salt}"`);
+  console.log("   requirePasswordChange: false");
+  console.log(`   lastPasswordChange: ${Date.now()}\n`);
 }
 
 main().catch((error) => {

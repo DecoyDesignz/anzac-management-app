@@ -45,12 +45,13 @@ export const getMaintenanceMode = query({
  */
 export const setMaintenanceMode = mutation({
   args: {
+    userId: v.id("personnel"),
     enabled: v.boolean(),
     message: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
     // Require administrator role (super_admin also allowed as it's higher privilege)
-    const user = await requireRole(ctx, "administrator");
+    const user = await requireRole(ctx, args.userId, "administrator");
     
     const existing = await ctx.db
       .query("systemSettings")
@@ -67,14 +68,14 @@ export const setMaintenanceMode = mutation({
       await ctx.db.patch(existing._id, {
         value: JSON.stringify(value),
         updatedAt: Date.now(),
-        updatedBy: user.personnelId,
+        updatedBy: user._id,
       });
     } else {
       await ctx.db.insert("systemSettings", {
         key: "maintenance_mode",
         value: JSON.stringify(value),
         updatedAt: Date.now(),
-        updatedBy: user.personnelId,
+        updatedBy: user._id,
       });
     }
     
@@ -87,12 +88,13 @@ export const setMaintenanceMode = mutation({
  */
 export const updateSetting = mutation({
   args: {
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session
     key: v.string(),
     value: v.any(),
   },
   handler: async (ctx, args) => {
     // Require administrator role (super_admin also allowed as it's higher privilege)
-    const user = await requireRole(ctx, "administrator");
+    const user = await requireRole(ctx, args.requesterUserId, "administrator");
     
     const existing = await ctx.db
       .query("systemSettings")
@@ -105,14 +107,14 @@ export const updateSetting = mutation({
       await ctx.db.patch(existing._id, {
         value: valueString,
         updatedAt: Date.now(),
-        updatedBy: user.personnelId,
+        updatedBy: user._id,
       });
     } else {
       await ctx.db.insert("systemSettings", {
         key: args.key,
         value: valueString,
         updatedAt: Date.now(),
-        updatedBy: user.personnelId,
+        updatedBy: user._id,
       });
     }
     

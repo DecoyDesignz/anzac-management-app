@@ -21,26 +21,16 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import { Award, Users, Plus, Search, TrendingUp, CheckCircle, Clock, Edit, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
+import { Award, Users, Plus, Search, TrendingUp, CheckCircle, Edit, ChevronDown, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { Id } from "../../../../convex/_generated/dataModel"
 import { getUserFriendlyError, getSchoolColorStyles, getThemeAwareColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
 import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
-import { EmptyState } from "@/components/common/empty-state"
 
 type QualificationWithSchool = {
   _id: string
@@ -125,18 +115,29 @@ export default function QualificationsPage() {
   const isInstructor = session?.user?.role === 'instructor'
 
   // Fetch data
-  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
-  const schools = useQuery(api.schools.listSchools, {})
+  const qualifications = useQuery(
+    api.qualifications.listQualificationsWithCounts,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const schools = useQuery(
+    api.schools.listSchools,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const managedSchools = useQuery(
     api.schools.listManagedSchools,
-    session?.user?.name && session?.user?.role
-      ? { username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
+    session?.user?.id
+      ? { userId: session.user.id as Id<"personnel">, username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
       : "skip"
   )
-  const personnel = useQuery(api.personnel.listPersonnel, { status: "active" })
+  const personnel = useQuery(
+    api.personnel.listPersonnel,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
+  )
   const personnelWithQualification = useQuery(
     api.qualifications.getPersonnelWithQualification,
-    viewingQualificationId ? { qualificationId: viewingQualificationId } : "skip"
+    viewingQualificationId && session?.user?.id
+      ? { userId: session.user.id as Id<"personnel">, qualificationId: viewingQualificationId }
+      : "skip"
   )
   
   // Mutations
@@ -183,7 +184,11 @@ export default function QualificationsPage() {
     setEditFormError(null)
     
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateQualification({
+        userId: session.user.id as Id<"personnel">,
         qualificationId: editingQual._id,
         name: editQualName.trim(),
         abbreviation: editQualAbbr.trim(),
@@ -220,7 +225,11 @@ export default function QualificationsPage() {
     setFormError(null)
     
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createQualification({
+        userId: session.user.id as Id<"personnel">,
         name: newQualName.trim(),
         abbreviation: newQualAbbr.trim(),
         schoolId: newQualSchoolId as Id<"schools">,
@@ -255,10 +264,14 @@ export default function QualificationsPage() {
     setAwardFormError(null)
     
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       const selectedPerson = personnel?.find(p => p._id === selectedPersonnelId)
       const selectedQual = qualifications?.find(q => q._id === selectedQualificationId)
       
       await awardQualification({
+        userId: session.user.id as Id<"personnel">,
         personnelId: selectedPersonnelId as Id<"personnel">,
         qualificationId: selectedQualificationId as Id<"qualifications">,
         awardedDate: Date.now(),

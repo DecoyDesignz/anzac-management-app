@@ -52,9 +52,11 @@ const schema = defineSchema({
     joinDate: v.number(), // Timestamp
     dischargeDate: v.optional(v.number()),
     notes: v.optional(v.string()),
+    staffNotes: v.optional(v.string()), // Staff-only notes (not visible to the personnel member themselves)
     
     // Login fields (optional - only present if user has system access)
-    passwordHash: v.optional(v.string()), // Bcrypt password hash
+    passwordHash: v.optional(v.string()), // Scrypt password hash
+    passwordSalt: v.optional(v.string()), // Unique salt for password hashing (hex encoded)
     isActive: v.optional(v.boolean()), // System access active status
     requirePasswordChange: v.optional(v.boolean()),
     lastPasswordChange: v.optional(v.number()),
@@ -221,6 +223,21 @@ const schema = defineSchema({
     updatedBy: v.optional(v.id("personnel")), // Personnel who updated it
   })
     .index("by_key", ["key"]),
+
+  // Login attempt tracking for rate limiting and security
+  loginAttempts: defineTable({
+    username: v.string(), // Username/callSign attempted
+    ipAddress: v.optional(v.string()), // IP address of the attempt
+    timestamp: v.number(), // When the attempt occurred
+    success: v.boolean(), // Whether the login succeeded
+    reason: v.optional(v.string()), // Failure reason if unsuccessful
+    personnelId: v.optional(v.id("personnel")), // ID of the personnel if username exists
+  })
+    .index("by_username", ["username"])
+    .index("by_ip", ["ipAddress"])
+    .index("by_timestamp", ["timestamp"])
+    .index("by_username_and_timestamp", ["username", "timestamp"])
+    .index("by_ip_and_timestamp", ["ipAddress", "timestamp"]),
 });
 
 export default schema;

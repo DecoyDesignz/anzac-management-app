@@ -1,7 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { EventType } from "@/components/events"
+import { Card } from "@/components/ui/card"
 
 interface CalendarDayCardProps {
   dayNumber: number
@@ -20,16 +19,19 @@ interface CalendarDayCardProps {
 }
 
 export function CalendarDayCard({
-  dayNumber,
   fullDate,
-  dayOfWeek,
   isOverflow,
   hasEvents,
   eventCount,
   isToday,
   dayStyling,
   textStyling,
-  onClick
+  onClick,
+  // These props are in the interface but not used in the component
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  dayNumber: _dayNumber,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  dayOfWeek: _dayOfWeek,
 }: CalendarDayCardProps) {
   return (
     <Card 

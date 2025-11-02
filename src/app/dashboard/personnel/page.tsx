@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { useSession } from "next-auth/react"
 import { api } from "../../../../convex/_generated/api"
@@ -29,8 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Users, Plus, Radio, Award, Grid, List, MoreVertical, Edit, Eye, Trash2, Calendar, Mail, Phone, TrendingUp, Shield, UserPlus, UserMinus } from "lucide-react"
-import { QualificationMatrix } from "@/components/dashboard/qualification-matrix"
+import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save } from "lucide-react"
 import { PersonnelQualifications } from "@/components/dashboard/personnel-qualifications"
 import { SearchFilterBar, FilterMode, SystemRole } from "@/components/dashboard/search-filter-bar"
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
@@ -38,6 +37,7 @@ import { EmptyState } from "@/components/common/empty-state"
 import { LoadingState } from "@/components/common/loading-state"
 import { useToast } from "@/hooks/use-toast"
 import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select"
+import { Textarea } from "@/components/ui/textarea"
 import { Id } from "../../../../convex/_generated/dataModel"
 import { getUserFriendlyError, getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
@@ -77,6 +77,11 @@ export default function PersonnelPage() {
   const [awardNotes, setAwardNotes] = useState("")
   const [isAwarding, setIsAwarding] = useState(false)
   
+  // Staff notes state
+  const [staffNotes, setStaffNotes] = useState("")
+  const [isEditingStaffNotes, setIsEditingStaffNotes] = useState(false)
+  const [isSavingStaffNotes, setIsSavingStaffNotes] = useState(false)
+  
   // Confirmation dialog state
   const [removeQualConfirm, setRemoveQualConfirm] = useState<{
     personnelId: string
@@ -102,14 +107,27 @@ export default function PersonnelPage() {
   const canPromote = session?.user?.role === 'administrator' || session?.user?.role === 'super_admin'
   const canEditPersonnel = session?.user?.role !== 'game_master'
   const isInstructor = session?.user?.role === 'instructor'
+  const isStaff = session?.user?.role === 'super_admin' || 
+                  session?.user?.role === 'administrator' || 
+                  session?.user?.role === 'instructor' || 
+                  session?.user?.role === 'game_master'
 
-  const personnel = useQuery(api.personnel.listPersonnelWithQualifications, { status: "active" })
-  const ranks = useQuery(api.ranks.listRanks, {})
-  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
+  const personnel = useQuery(
+    api.personnel.listPersonnelWithQualifications,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
+  )
+  const ranks = useQuery(
+    api.ranks.listRanks,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const qualifications = useQuery(
+    api.qualifications.listQualificationsWithCounts,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const managedSchools = useQuery(
     api.schools.listManagedSchools,
-    session?.user?.name && session?.user?.role
-      ? { username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
+    session?.user?.id
+      ? { userId: session.user.id as Id<"personnel">, username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
       : "skip"
   )
   const createPersonnel = useMutation(api.personnel.createPersonnel)
@@ -118,6 +136,20 @@ export default function PersonnelPage() {
   const awardQualification = useMutation(api.personnel.awardQualification)
   const removeQualification = useMutation(api.personnel.removeQualification)
   const deletePersonnel = useMutation(api.personnel.deletePersonnel)
+  const updateStaffNotes = useMutation(api.personnel.updateStaffNotes)
+  
+  // Get full personnel details when detail dialog opens (for staff notes)
+  const personnelDetails = useQuery(
+    api.personnel.getPersonnelDetails,
+    selectedPersonnelId && personnelDetailOpen && session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          personnelId: selectedPersonnelId as Id<"personnel">,
+          requesterUsername: session?.user?.name,
+          requesterRole: session?.user?.role,
+        }
+      : "skip"
+  )
 
   // Filter and sort personnel
   const filteredPersonnel = useMemo(() => {
@@ -243,7 +275,11 @@ export default function PersonnelPage() {
   const handleSubmitPersonnel = async () => {
     try {
       if (personnelFormMode === "add") {
+        if (!session?.user?.id) {
+          throw new Error("Session expired. Please log in again.")
+        }
         await createPersonnel({
+          userId: session.user.id as Id<"personnel">,
           callSign: formData.callSign,
           status: "active",
           joinDate: Date.now(),
@@ -253,7 +289,11 @@ export default function PersonnelPage() {
           description: "Personnel added successfully with Private rank",
         })
       } else if (personnelFormMode === "edit" && selectedPersonnelId) {
+        if (!session?.user?.id) {
+          throw new Error("Session expired. Please log in again.")
+        }
         await updatePersonnel({
+          userId: session.user.id as Id<"personnel">,
           personnelId: selectedPersonnelId as Id<"personnel">,
           callSign: formData.callSign,
         })
@@ -284,7 +324,11 @@ export default function PersonnelPage() {
     if (!selectedPersonnelId || !selectedRankId) return
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await promotePersonnel({
+        userId: session.user.id as Id<"personnel">,
         personnelId: selectedPersonnelId as Id<"personnel">,
         newRankId: selectedRankId as Id<"ranks">,
         promotionDate: Date.now(),
@@ -334,9 +378,13 @@ export default function PersonnelPage() {
     setIsAwarding(true)
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       const selectedQual = qualifications?.find(q => q._id === selectedQualificationId)
 
       await awardQualification({
+        userId: session.user.id as Id<"personnel">,
         personnelId: selectedPersonnelId as Id<"personnel">,
         qualificationId: selectedQualificationId as Id<"qualifications">,
         awardedDate: Date.now(),
@@ -371,7 +419,11 @@ export default function PersonnelPage() {
     if (!removeQualConfirm) return
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await removeQualification({
+        userId: session.user.id as Id<"personnel">,
         personnelId: removeQualConfirm.personnelId as Id<"personnel">,
         qualificationId: removeQualConfirm.qualificationId as Id<"qualifications">,
       })
@@ -397,7 +449,11 @@ export default function PersonnelPage() {
     if (!archivePersonnelConfirm) return
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await deletePersonnel({
+        userId: session.user.id as Id<"personnel">,
         personnelId: archivePersonnelConfirm._id as Id<"personnel">,
       })
 
@@ -418,6 +474,57 @@ export default function PersonnelPage() {
     if (!selectedPersonnelId || !personnel) return null
     return personnel.find(p => p._id === selectedPersonnelId)
   }, [selectedPersonnelId, personnel])
+
+  // Check if current user is viewing their own profile (should not see staff notes)
+  const isViewingSelf = selectedPerson && session?.user?.name === selectedPerson.callSign
+
+  // Sync staff notes from personnelDetails when it loads
+  useEffect(() => {
+    if (personnelDetails && personnelDetails.staffNotes !== undefined) {
+      setStaffNotes(personnelDetails.staffNotes || "")
+      setIsEditingStaffNotes(false)
+    }
+  }, [personnelDetails])
+
+  // Reset staff notes state when dialog closes
+  useEffect(() => {
+    if (!personnelDetailOpen) {
+      setStaffNotes("")
+      setIsEditingStaffNotes(false)
+    }
+  }, [personnelDetailOpen])
+
+  const handleSaveStaffNotes = async () => {
+    if (!selectedPersonnelId) return
+
+    setIsSavingStaffNotes(true)
+    try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await updateStaffNotes({
+        userId: session.user.id as Id<"personnel">,
+        personnelId: selectedPersonnelId as Id<"personnel">,
+        staffNotes: staffNotes.trim() || undefined,
+      })
+
+      toast({
+        title: "Success",
+        description: "Staff notes updated successfully",
+        variant: "success",
+      })
+
+      setIsEditingStaffNotes(false)
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getUserFriendlyError(error),
+        variant: "destructive",
+      })
+    } finally {
+      setIsSavingStaffNotes(false)
+    }
+  }
 
   // Prepare combobox options for qualifications (filtered by instructor's schools)
   const qualificationOptions: SearchableSelectOption[] = useMemo(() => {
@@ -497,6 +604,7 @@ export default function PersonnelPage() {
       {/* Search and Filter Bar */}
       <div className="animate-fade-in opacity-0 animate-delay-100">
         <SearchFilterBar
+        userId={session?.user?.id as Id<"personnel"> | null}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         filterMode={filterMode}
@@ -547,7 +655,7 @@ export default function PersonnelPage() {
                 />
               ) : (
                 <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {filteredPersonnel.map((person, index) => (
+                  {filteredPersonnel.map((person) => (
                     <Card 
                       key={person._id}
                       className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:border-primary/50"
@@ -909,6 +1017,88 @@ export default function PersonnelPage() {
                   />
                 </CardContent>
               </Card>
+
+              {/* Staff Notes Section (Staff Only, Not When Viewing Self) */}
+              {isStaff && !isViewingSelf && (
+                <Card className="border-amber-500/20 bg-amber-500/5">
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-amber-600" />
+                        Staff Notes
+                        <Badge variant="outline" className="text-xs ml-2 border-amber-500/30 text-amber-600">
+                          Staff Only
+                        </Badge>
+                      </CardTitle>
+                      {!isEditingStaffNotes && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setIsEditingStaffNotes(true)}
+                        >
+                          <Edit className="w-4 h-4 mr-2" />
+                          Edit
+                        </Button>
+                      )}
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    {isEditingStaffNotes ? (
+                      <div className="space-y-4">
+                        <div>
+                          <Label htmlFor="staff-notes" className="text-xs text-muted-foreground mb-2 block">
+                            Staff Notes (not visible to personnel)
+                          </Label>
+                          <Textarea
+                            id="staff-notes"
+                            value={staffNotes}
+                            onChange={(e) => setStaffNotes(e.target.value)}
+                            placeholder="Enter staff notes about this personnel member..."
+                            className="min-h-[120px]"
+                            disabled={isSavingStaffNotes}
+                          />
+                          <p className="text-xs text-muted-foreground mt-2">
+                            These notes are only visible to staff members and will not be shown to the personnel member themselves.
+                          </p>
+                        </div>
+                        <div className="flex gap-2 justify-end">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setIsEditingStaffNotes(false)
+                              // Reset to original value
+                              if (personnelDetails) {
+                                setStaffNotes(personnelDetails.staffNotes || "")
+                              }
+                            }}
+                            disabled={isSavingStaffNotes}
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            variant="default"
+                            size="sm"
+                            onClick={handleSaveStaffNotes}
+                            disabled={isSavingStaffNotes}
+                          >
+                            <Save className="w-4 h-4 mr-2" />
+                            {isSavingStaffNotes ? "Saving..." : "Save Notes"}
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div>
+                        {personnelDetails?.staffNotes ? (
+                          <p className="text-sm whitespace-pre-wrap">{personnelDetails.staffNotes}</p>
+                        ) : (
+                          <p className="text-sm text-muted-foreground italic">No staff notes yet.</p>
+                        )}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* Quick Stats */}
               <div className="grid grid-cols-3 gap-4">

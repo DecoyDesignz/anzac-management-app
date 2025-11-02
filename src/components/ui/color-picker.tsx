@@ -24,7 +24,7 @@ const ColorPicker = forwardRef<
   Omit<ButtonProps, 'value' | 'onChange' | 'onBlur'> & ColorPickerProps
 >(
   (
-    { disabled, value, onChange, onBlur, name, className, size, ...props },
+    { disabled, value, onChange, onBlur, name, className, ...props },
     forwardedRef
   ) => {
     const ref = useForwardedRef(forwardedRef);

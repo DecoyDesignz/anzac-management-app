@@ -18,6 +18,7 @@ export interface Personnel {
   joinDate: number
   dischargeDate?: number
   notes?: string
+  staffNotes?: string // Staff-only notes (not visible to the personnel member themselves)
   // System access fields (optional)
   passwordHash?: string
   isActive?: boolean

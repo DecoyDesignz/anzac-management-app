@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Montserrat, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "@/providers/convex-provider";
@@ -26,20 +27,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                const theme = localStorage.getItem('anzac-theme') || 'dark';
-                document.documentElement.classList.add(theme);
-              } catch (e) {
-                document.documentElement.classList.add('dark');
-              }
-            `,
-          }}
-        />
-      </head>
+      <Script src="/theme-init.js" strategy="beforeInteractive" />
       <body
         className={`${montserrat.variable} ${geistMono.variable} antialiased`}
       >

@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useQuery } from "convex/react"
+import { useSession } from "next-auth/react"
 import { api } from "../../../convex/_generated/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -31,7 +32,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { CheckCircle, Plus, Award, Users } from "lucide-react"
 import { useMutation } from "convex/react"
@@ -60,14 +60,18 @@ export function QualificationMatrix({
   onPersonnelSelect, 
   compact = false 
 }: QualificationMatrixProps) {
+  const { data: session } = useSession()
   const [selectedPersonnel, setSelectedPersonnel] = useState<string[]>([])
   const [selectedQualification, setSelectedQualification] = useState<string>("")
   const [awardModalOpen, setAwardModalOpen] = useState(false)
 
   // Fetch data
-  const personnel = useQuery(api.personnel.listPersonnelWithQualifications, { status: "active" })
-  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
-  const schools = useQuery(api.schools.listSchools, {})
+  const personnel = useQuery(
+    api.personnel.listPersonnelWithQualifications,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
+  )
+  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip")
+  const schools = useQuery(api.schools.listSchools, session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip")
 
   // Mutations
   const awardQualification = useMutation(api.personnel.awardQualification)
@@ -83,11 +87,12 @@ export function QualificationMatrix({
   }, {} as Record<string, { school: SchoolData; qualifications: QualificationData[] }>) || {}
 
   const handleAwardQualification = async () => {
-    if (!selectedQualification || selectedPersonnel.length === 0) return
+    if (!selectedQualification || selectedPersonnel.length === 0 || !session?.user?.id) return
 
     try {
       for (const personnelId of selectedPersonnel) {
         await awardQualification({
+          userId: session.user.id as Id<"personnel">,
           personnelId: personnelId as Id<"personnel">,
           qualificationId: selectedQualification as Id<"qualifications">,
           awardedDate: Date.now(),

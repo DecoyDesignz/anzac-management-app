@@ -1,3 +1,4 @@
+import { v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireAuth } from "./helpers";
 
@@ -5,9 +6,11 @@ import { requireAuth } from "./helpers";
  * Get dashboard statistics
  */
 export const getStatistics = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     // Count total personnel
     const allPersonnel = await ctx.db.query("personnel").collect();
@@ -59,9 +62,11 @@ export const getStatistics = query({
  * Get enhanced dashboard overview with qualifications and events
  */
 export const getDashboardOverview = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     // Get basic statistics
     const allPersonnel = await ctx.db.query("personnel").collect();

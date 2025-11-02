@@ -6,9 +6,11 @@ import { requireAuth, requireRole } from "./helpers";
  * List all ranks ordered by promotion hierarchy
  */
 export const listRanks = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     const ranks = await ctx.db
       .query("ranks")
@@ -23,9 +25,12 @@ export const listRanks = query({
  * Get a specific rank
  */
 export const getRank = query({
-  args: { rankId: v.id("ranks") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    rankId: v.id("ranks")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const rank = await ctx.db.get(args.rankId);
     return rank;
@@ -36,9 +41,12 @@ export const getRank = query({
  * Get rank with personnel count
  */
 export const getRankWithCount = query({
-  args: { rankId: v.id("ranks") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    rankId: v.id("ranks")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const rank = await ctx.db.get(args.rankId);
     if (!rank) {
@@ -61,9 +69,11 @@ export const getRankWithCount = query({
  * List all ranks with personnel counts ordered by promotion hierarchy
  */
 export const listRanksWithCounts = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     const ranks = await ctx.db
       .query("ranks")
@@ -93,12 +103,13 @@ export const listRanksWithCounts = query({
  */
 export const createRank = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     name: v.string(),
     abbreviation: v.string(),
     insigniaUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Check if rank with same name exists
     const existing = await ctx.db
@@ -130,13 +141,14 @@ export const createRank = mutation({
  */
 export const updateRank = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     rankId: v.id("ranks"),
     name: v.optional(v.string()),
     abbreviation: v.optional(v.string()),
     insigniaUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     const { rankId, ...updates } = args;
     
@@ -155,9 +167,12 @@ export const updateRank = mutation({
  * Note: This will fail if personnel are assigned to this rank
  */
 export const deleteRank = mutation({
-  args: { rankId: v.id("ranks") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    rankId: v.id("ranks")
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Get the rank name for better error messages
     const rank = await ctx.db.get(args.rankId);
@@ -203,6 +218,7 @@ export const deleteRank = mutation({
  */
 export const updateRankOrder = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     updates: v.array(
       v.object({
         rankId: v.id("ranks"),
@@ -211,7 +227,7 @@ export const updateRankOrder = mutation({
     ),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Update each rank's order
     for (const update of args.updates) {

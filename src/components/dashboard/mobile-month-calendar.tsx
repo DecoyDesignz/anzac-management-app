@@ -16,24 +16,19 @@ interface MobileMonthCalendarProps {
 
 export function MobileMonthCalendar({
   selectedMonth,
-  events,
   onDayClick,
   getEventsForDate,
-  isToday,
   getDayStyling,
-  getTextStyling
+  getTextStyling,
+  // These props are passed but not used in this component
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  events: _events,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  onMonthChange: _onMonthChange,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  isToday: _isToday,
 }: MobileMonthCalendarProps) {
   
-  // Helper functions copied from event-calendar.tsx
-  function getMonthStart(date: Date): Date {
-    // Get what date/time it is in Sydney timezone
-    const sydneyDateStr = date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }) // YYYY-MM-DD
-    const [year, month] = sydneyDateStr.split('-').map(Number)
-    
-    // Create a simple date for the first day of the month
-    return new Date(year, month - 1, 1, 0, 0, 0, 0)
-  }
-
   // Get all days to display in calendar grid (including overflow from prev/next months)
   const getCalendarGridDays = () => {
     // Get the month/year from selectedMonth in Sydney timezone

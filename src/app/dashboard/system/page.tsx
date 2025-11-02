@@ -19,7 +19,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog"
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
-import { FormDialog } from "@/components/common/form-dialog"
 import { EmptyState } from "@/components/common/empty-state"
 import { LoadingState } from "@/components/common/loading-state"
 import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
@@ -41,9 +40,8 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Star, GraduationCap, School, Shield, Users2, Copy, Check, Eye, EyeOff, Pencil, Trash2, GripVertical, KeyRound, Settings, Wrench } from "lucide-react"
+import { Star, GraduationCap, School, Shield, Users2, Copy, Check, Eye, EyeOff, Pencil, Trash2, GripVertical, KeyRound, Wrench } from "lucide-react"
 import { formatRole, generateTemporaryPassword } from "../../../../convex/helpers"
-import { Checkbox } from "@/components/ui/checkbox"
 import { getRoleColorStyles } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
 
@@ -162,14 +160,26 @@ export default function SystemManagementPage() {
   const [viewingSchoolId, setViewingSchoolId] = useState<Id<"schools"> | null>(null)
 
   // Data queries - ALL HOOKS MUST BE CALLED BEFORE ANY CONDITIONAL RETURNS
-  const ranks = useQuery(api.ranks.listRanksWithCounts, {})
-  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
-  const schools = useQuery(api.schools.listSchools, {})
+  const ranks = useQuery(
+    api.ranks.listRanksWithCounts,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const qualifications = useQuery(
+    api.qualifications.listQualificationsWithCounts,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const schools = useQuery(
+    api.schools.listSchools,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const schoolInstructors = useQuery(
     api.schools.getSchoolInstructors,
-    viewingSchoolId ? { schoolId: viewingSchoolId } : "skip"
+    viewingSchoolId && session?.user?.id ? { userId: session.user.id as Id<"personnel">, schoolId: viewingSchoolId } : "skip"
   )
-  const systemUsers = useQuery(api.users.listUsersWithRoles, {})
+  const systemUsers = useQuery(
+    api.users.listUsersWithRoles,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const availableRoles = useQuery(api.users.getAllRoles, {})
   const maintenanceMode = useQuery(api.systemSettings.getMaintenanceMode, {})
 
@@ -296,7 +306,13 @@ export default function SystemManagementPage() {
 
     // Save to database
     try {
-      await updateRankOrder({ updates })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await updateRankOrder({
+        userId: session.user.id as Id<"personnel">,
+        updates
+      })
     } catch (err: unknown) {
       console.error("Failed to reorder ranks:", err)
       // Revert on error
@@ -311,7 +327,11 @@ export default function SystemManagementPage() {
     setError(null)
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createRank({
+        userId: session.user.id as Id<"personnel">,
         name: rankForm.name,
         abbreviation: rankForm.abbreviation,
       })
@@ -339,7 +359,11 @@ export default function SystemManagementPage() {
     setError(null)
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateRank({
+        userId: session.user.id as Id<"personnel">,
         rankId: editingRankId,
         name: rankForm.name,
         abbreviation: rankForm.abbreviation,
@@ -356,7 +380,13 @@ export default function SystemManagementPage() {
 
   const handleDeleteRank = async (rankId: Id<"ranks">) => {
     try {
-      await deleteRank({ rankId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await deleteRank({
+        userId: session.user.id as Id<"personnel">,
+        rankId
+      })
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete rank"
       setError(errorMessage)
@@ -381,7 +411,11 @@ export default function SystemManagementPage() {
     }
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createQualification({
+        userId: session.user.id as Id<"personnel">,
         name: qualForm.name,
         abbreviation: qualForm.abbreviation,
         schoolId: qualForm.schoolId as Id<"schools">,
@@ -416,7 +450,11 @@ export default function SystemManagementPage() {
     }
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateQualification({
+        userId: session.user.id as Id<"personnel">,
         qualificationId: editingQualId,
         name: qualForm.name,
         abbreviation: qualForm.abbreviation,
@@ -434,7 +472,13 @@ export default function SystemManagementPage() {
 
   const handleDeleteQualification = async (qualificationId: Id<"qualifications">) => {
     try {
-      await deleteQualification({ qualificationId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await deleteQualification({
+        userId: session.user.id as Id<"personnel">,
+        qualificationId
+      })
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete qualification"
       setError(errorMessage)
@@ -449,7 +493,11 @@ export default function SystemManagementPage() {
     setError(null)
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createSchool({
+        userId: session.user.id as Id<"personnel">,
         name: schoolForm.name,
         abbreviation: schoolForm.abbreviation,
       })
@@ -478,7 +526,11 @@ export default function SystemManagementPage() {
     setError(null)
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateSchool({
+        userId: session.user.id as Id<"personnel">,
         schoolId: editingSchoolId,
         name: schoolForm.name,
         abbreviation: schoolForm.abbreviation,
@@ -495,7 +547,13 @@ export default function SystemManagementPage() {
 
   const handleDeleteSchool = async (schoolId: Id<"schools">) => {
     try {
-      await deleteSchool({ schoolId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await deleteSchool({
+        userId: session.user.id as Id<"personnel">,
+        schoolId
+      })
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete school"
       // Show error in a more user-friendly way
@@ -539,6 +597,9 @@ export default function SystemManagementPage() {
     
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createUserAccount({
         name: userForm.name,
         password: userForm.password,
@@ -570,7 +631,11 @@ export default function SystemManagementPage() {
     setError(null)
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateUser({
+        requesterUserId: session.user.id as Id<"personnel">,
         userId: editingUserId,
         name: editUserForm.name,
       })
@@ -602,7 +667,11 @@ export default function SystemManagementPage() {
     
     setIsSubmitting(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateUserRoles({
+        requesterUserId: session.user.id as Id<"personnel">,
         userId: editingUserId,
         roles: editRolesForm as Array<"administrator" | "game_master" | "instructor">,
       })
@@ -618,7 +687,13 @@ export default function SystemManagementPage() {
 
   const handleDeleteUser = async (userId: Id<"personnel">) => {
     try {
-      await deleteUser({ userId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await deleteUser({
+        requesterUserId: session.user.id as Id<"personnel">,
+        userId
+      })
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to delete user"
       setError(errorMessage)
@@ -629,7 +704,13 @@ export default function SystemManagementPage() {
 
   const handleToggleUserStatus = async (userId: Id<"personnel">) => {
     try {
-      await toggleUserStatus({ userId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await toggleUserStatus({
+        requesterUserId: session.user.id as Id<"personnel">,
+        userId
+      })
     } catch (err: unknown) {
       const errorMessage = err instanceof Error ? err.message : "Failed to toggle user status"
       setError(errorMessage)
@@ -662,7 +743,12 @@ export default function SystemManagementPage() {
     setIsSubmitting(true)
     
     try {
-      const result = await resetUserPassword({ userId: resetPasswordUserId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      const result = await resetUserPassword({
+        userId: resetPasswordUserId
+      })
       setResetTemporaryPassword(result.temporaryPassword)
       // Keep dialog open to show the password
     } catch (err: unknown) {
@@ -701,7 +787,11 @@ export default function SystemManagementPage() {
   const handleToggleMaintenance = async (enabled: boolean) => {
     setIsTogglingMaintenance(true)
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await setMaintenanceMode({
+        userId: session.user.id as Id<"personnel">,
         enabled,
         message: maintenanceMessage || undefined,
       })

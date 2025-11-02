@@ -1,7 +1,9 @@
 "use client"
 
 import { useQuery } from "convex/react"
+import { useSession } from "next-auth/react"
 import { api } from "../../../convex/_generated/api"
+import { Id } from "../../../convex/_generated/dataModel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -11,11 +13,24 @@ import { useTheme } from "@/providers/theme-provider"
 
 export default function DashboardPage() {
   const { theme } = useTheme()
+  const { data: session } = useSession()
   const isDarkMode = theme === 'dark'
-  const dashboardData = useQuery(api.dashboard.getDashboardOverview, {})
-  const weekSchedule = useQuery(api.events.getWeekSchedule, {})
-  const nextWeekSchedule = useQuery(api.events.getNextWeekSchedule, {})
-  const nextEvent = useQuery(api.events.getNextEvent, {})
+  const dashboardData = useQuery(
+    api.dashboard.getDashboardOverview,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const weekSchedule = useQuery(
+    api.events.getWeekSchedule,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const nextWeekSchedule = useQuery(
+    api.events.getNextWeekSchedule,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const nextEvent = useQuery(
+    api.events.getNextEvent,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
 
   if (!dashboardData || !weekSchedule || !nextWeekSchedule) {
     return <DashboardLoading />

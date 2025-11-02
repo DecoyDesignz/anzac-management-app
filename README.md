@@ -61,6 +61,36 @@ A comprehensive military unit management system built for Arma Reforger, designe
 - **Turbopack**: Fast bundler for development
 - **TypeScript 5**: Latest TypeScript features
 
+## Getting Started
+
+### Development Setup
+
+1. Clone the repository
+2. Install dependencies: `npm install`
+3. Start Convex dev server: `npm run convex:dev`
+4. Start Next.js dev server: `npm run dev`
+5. Access the application at `http://localhost:3000`
+
+### Verifying Production Readiness
+
+Before deploying to production, run the verification script:
+
+```bash
+npm run verify-deployment
+```
+
+This checks:
+- Git status
+- Migration functions
+- Schema configuration
+- Environment variables
+- Required scripts
+- Documentation
+
+## Documentation
+
+- **[Migration Guide](./src/docs/MIGRATION.md)**: Complete guide for migrating the application, database, and deployment to new accounts (Convex and Vercel)
+
 ## License
 
 This project is private and proprietary to the ANZAC unit + DecoyDesignz.

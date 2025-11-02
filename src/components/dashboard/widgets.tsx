@@ -2,21 +2,19 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { ChevronDown, TrendingUp, TrendingDown, Activity } from "lucide-react"
+import { ChevronDown } from "lucide-react"
 
 // Data Text Cards with Circular Progress
 export function DataTextCard({ 
   value, 
   label, 
   description, 
-  percentage, 
-  trend = "up" 
+  percentage
 }: { 
   value: string
   label: string
   description: string
   percentage: number
-  trend?: "up" | "down"
 }) {
   return (
     <Card variant="depth">

@@ -7,10 +7,11 @@ import { requireAuth, requireRole, canManageSchool } from "./helpers";
  */
 export const listQualifications = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     schoolId: v.optional(v.id("schools")),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const qualifications = args.schoolId
       ? await ctx.db
@@ -38,9 +39,12 @@ export const listQualifications = query({
  * Get a specific qualification
  */
 export const getQualification = query({
-  args: { qualificationId: v.id("qualifications") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    qualificationId: v.id("qualifications")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const qualification = await ctx.db.get(args.qualificationId);
     if (!qualification) {
@@ -60,9 +64,12 @@ export const getQualification = query({
  * Get qualification with personnel count
  */
 export const getQualificationWithCount = query({
-  args: { qualificationId: v.id("qualifications") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    qualificationId: v.id("qualifications")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const qualification = await ctx.db.get(args.qualificationId);
     if (!qualification) {
@@ -89,10 +96,11 @@ export const getQualificationWithCount = query({
  */
 export const listQualificationsWithCounts = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     schoolId: v.optional(v.id("schools")),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const qualifications = args.schoolId
       ? await ctx.db
@@ -126,13 +134,14 @@ export const listQualificationsWithCounts = query({
  */
 export const createQualification = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     name: v.string(),
     abbreviation: v.string(),
     schoolId: v.id("schools"),
     iconUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireAuth(ctx, args.userId);
 
     // TEMPORARY: Since auth integration isn't complete, allow all operations
     // The frontend controls access via session data
@@ -174,6 +183,7 @@ export const createQualification = mutation({
  */
 export const updateQualification = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     qualificationId: v.id("qualifications"),
     name: v.optional(v.string()),
     abbreviation: v.optional(v.string()),
@@ -181,7 +191,7 @@ export const updateQualification = mutation({
     iconUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireAuth(ctx, args.userId);
 
     // Get the qualification to check its current school
     const qualification = await ctx.db.get(args.qualificationId);
@@ -227,9 +237,12 @@ export const updateQualification = mutation({
  * Get all personnel who have a specific qualification
  */
 export const getPersonnelWithQualification = query({
-  args: { qualificationId: v.id("qualifications") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    qualificationId: v.id("qualifications")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const qualification = await ctx.db.get(args.qualificationId);
     if (!qualification) {
@@ -274,9 +287,12 @@ export const getPersonnelWithQualification = query({
  * Note: This will fail if personnel have been awarded this qualification
  */
 export const deleteQualification = mutation({
-  args: { qualificationId: v.id("qualifications") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    qualificationId: v.id("qualifications")
+  },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireAuth(ctx, args.userId);
 
     // Get the qualification name for better error messages
     const qualification = await ctx.db.get(args.qualificationId);

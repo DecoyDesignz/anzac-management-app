@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireRole, canAwardQualification, canManageSchool } from "./helpers";
+import { requireAuth, requireRole, canAwardQualification, canManageSchool, isStaffRole, isStaff } from "./helpers";
 
 /**
  * List all personnel
  */
 export const listPersonnel = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     status: v.optional(
       v.union(
         v.literal("active"),
@@ -17,7 +18,7 @@ export const listPersonnel = query({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const personnel = args.status
       ? await ctx.db
@@ -46,6 +47,7 @@ export const listPersonnel = query({
  */
 export const listPersonnelWithQualifications = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     status: v.optional(
       v.union(
         v.literal("active"),
@@ -56,7 +58,7 @@ export const listPersonnelWithQualifications = query({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const personnel = args.status
       ? await ctx.db
@@ -101,8 +103,11 @@ export const listPersonnelWithQualifications = query({
             color: role!.color,
           }));
 
+        // Exclude staffNotes from list view (only available in detail view with proper permissions)
+        const { staffNotes, ...personWithoutStaffNotes } = person;
+        
         return {
-          ...person,
+          ...personWithoutStaffNotes,
           rank,
           qualifications: qualifications.filter(q => q !== null),
           roles: roleDetails,
@@ -119,14 +124,28 @@ export const listPersonnelWithQualifications = query({
  * Get a specific personnel member with full details
  */
 export const getPersonnelDetails = query({
-  args: { personnelId: v.id("personnel") },
+  args: { 
+    userId: v.id("personnel"), // User ID from NextAuth session
+    personnelId: v.id("personnel"),
+    requesterUsername: v.optional(v.string()), // Username of the person making the request (deprecated, use userId)
+    requesterRole: v.optional(v.string()), // Role of the person making the request (deprecated, will be determined from userId)
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    const requester = await requireAuth(ctx, args.userId);
 
     const person = await ctx.db.get(args.personnelId);
     if (!person) {
       return null;
     }
+
+    // Check if requester is viewing their own profile
+    const isViewingSelf = requester._id === args.personnelId;
+
+    // Check if requester has staff role by querying their roles
+    const isRequesterStaff = await isStaff(ctx, args.userId);
+
+    // Only include staffNotes if requester is staff and not viewing themselves
+    const includeStaffNotes = isRequesterStaff && !isViewingSelf;
 
     // Get rank
     const rank = person.rankId ? await ctx.db.get(person.rankId) : null;
@@ -171,12 +190,24 @@ export const getPersonnelDetails = query({
       })
     );
 
-    return {
+    // Build result object, conditionally including staffNotes
+    const result: any = {
       ...person,
       rank,
       qualifications,
       rankHistory: rankHistoryWithDetails,
     };
+
+    // Only include staffNotes if requester is staff and not viewing themselves
+    if (includeStaffNotes) {
+      result.staffNotes = person.staffNotes;
+    } else {
+      // Explicitly exclude staffNotes
+      const { staffNotes, ...rest } = result;
+      return rest;
+    }
+
+    return result;
   },
 });
 
@@ -185,6 +216,7 @@ export const getPersonnelDetails = query({
  */
 export const createPersonnel = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     callSign: v.string(),
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
@@ -201,7 +233,7 @@ export const createPersonnel = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     // Find the Private rank to assign by default
     const privateRank = await ctx.db
@@ -251,6 +283,7 @@ export const createPersonnel = mutation({
  */
 export const updatePersonnel = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
     callSign: v.optional(v.string()),
     firstName: v.optional(v.string()),
@@ -269,7 +302,7 @@ export const updatePersonnel = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "instructor");
+    await requireRole(ctx, args.userId, "instructor");
 
     const { personnelId, ...updates } = args;
     
@@ -288,13 +321,14 @@ export const updatePersonnel = mutation({
  */
 export const promotePersonnel = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
     newRankId: v.id("ranks"),
     promotionDate: v.number(),
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, "administrator");
+    const user = await requireRole(ctx, args.userId, "administrator");
 
     // Verify personnel exists
     const person = await ctx.db.get(args.personnelId);
@@ -331,6 +365,7 @@ export const promotePersonnel = mutation({
  */
 export const awardQualification = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
     qualificationId: v.id("qualifications"),
     awardedDate: v.number(),
@@ -338,7 +373,7 @@ export const awardQualification = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireRole(ctx, "instructor");
+    const user = await requireRole(ctx, args.userId, "instructor");
 
     // Check if instructor has permission to award this qualification
     const canAward = await canAwardQualification(
@@ -409,11 +444,12 @@ export const awardQualification = mutation({
  */
 export const removeQualification = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
     qualificationId: v.id("qualifications"),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireAuth(ctx, args.userId);
 
     // Get the qualification to check its school
     const qualification = await ctx.db.get(args.qualificationId);
@@ -424,7 +460,7 @@ export const removeQualification = mutation({
     // TEMPORARY: Since auth integration isn't complete, allow all operations
     // The frontend controls access via session data
     // Check if user can manage this qualification's school
-    // const canManage = await canManageSchool(ctx, user._id, qualification.schoolId);
+    // const canManage = await canManageSchool(ctx, args.userId, qualification.schoolId);
     // if (!canManage) {
     //   throw new Error("You do not have permission to remove this qualification");
     // }
@@ -452,9 +488,12 @@ export const removeQualification = mutation({
  * Delete personnel (Administrator only)
  */
 export const deletePersonnel = mutation({
-  args: { personnelId: v.id("personnel") },
+  args: { 
+    userId: v.id("personnel"), // User ID from NextAuth session
+    personnelId: v.id("personnel") 
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Delete all qualifications
     const qualifications = await ctx.db
@@ -487,6 +526,7 @@ export const deletePersonnel = mutation({
  */
 export const listPersonnelWithRoles = query({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     status: v.optional(
       v.union(
         v.literal("active"),
@@ -498,7 +538,7 @@ export const listPersonnelWithRoles = query({
     systemAccessOnly: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     let personnel = args.status
       ? await ctx.db
@@ -555,6 +595,7 @@ export const listPersonnelWithRoles = query({
  */
 export const grantSystemAccess = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
     roles: v.array(v.union(
       v.literal("administrator"),
@@ -564,7 +605,7 @@ export const grantSystemAccess = mutation({
     )),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     const person = await ctx.db.get(args.personnelId);
     if (!person) {
@@ -608,10 +649,11 @@ export const grantSystemAccess = mutation({
  */
 export const revokeSystemAccess = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     const person = await ctx.db.get(args.personnelId);
     if (!person) {
@@ -663,6 +705,7 @@ export const revokeSystemAccess = mutation({
  */
 export const updatePersonnelRoles = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     personnelId: v.id("personnel"),
     roles: v.array(v.union(
       v.literal("administrator"),
@@ -672,7 +715,7 @@ export const updatePersonnelRoles = mutation({
     )),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Remove existing roles
     const existingRoles = await ctx.db
@@ -698,6 +741,34 @@ export const updatePersonnelRoles = mutation({
         });
       }
     }
+
+    return { success: true };
+  },
+});
+
+/**
+ * Update staff notes for a personnel member (Staff only)
+ * Staff notes are not visible to the personnel member themselves
+ */
+export const updateStaffNotes = mutation({
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    personnelId: v.id("personnel"),
+    staffNotes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Require instructor role or higher (all staff roles)
+    await requireRole(ctx, args.userId, "instructor");
+
+    const person = await ctx.db.get(args.personnelId);
+    if (!person) {
+      throw new Error("Personnel not found");
+    }
+
+    // Update staff notes
+    await ctx.db.patch(args.personnelId, {
+      staffNotes: args.staffNotes || undefined,
+    });
 
     return { success: true };
   },

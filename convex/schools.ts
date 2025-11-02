@@ -6,9 +6,11 @@ import { requireAuth, requireRole, canManageSchool } from "./helpers";
  * List all schools
  */
 export const listSchools = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     const schools = await ctx.db.query("schools").collect();
     return schools;
@@ -19,9 +21,12 @@ export const listSchools = query({
  * Get a specific school with its qualifications
  */
 export const getSchoolWithQualifications = query({
-  args: { schoolId: v.id("schools") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    schoolId: v.id("schools")
+  },
   handler: async (ctx, args) => {
-    await requireAuth(ctx);
+    await requireAuth(ctx, args.userId);
 
     const school = await ctx.db.get(args.schoolId);
     if (!school) {
@@ -44,9 +49,12 @@ export const getSchoolWithQualifications = query({
  * Get instructors assigned to a school
  */
 export const getSchoolInstructors = query({
-  args: { schoolId: v.id("schools") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    schoolId: v.id("schools")
+  },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     const assignments = await ctx.db
       .query("instructorSchools")
@@ -70,13 +78,14 @@ export const getSchoolInstructors = query({
  */
 export const createSchool = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     name: v.string(),
     abbreviation: v.string(),
     iconUrl: v.optional(v.string()),
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.userId, "administrator");
 
     // Check if school with same name exists
     const existing = await ctx.db
@@ -104,6 +113,7 @@ export const createSchool = mutation({
  */
 export const updateSchool = mutation({
   args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
     schoolId: v.id("schools"),
     name: v.optional(v.string()),
     abbreviation: v.optional(v.string()),
@@ -111,7 +121,7 @@ export const updateSchool = mutation({
     color: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireAuth(ctx, args.userId);
 
     // TEMPORARY: Since auth integration isn't complete, allow all operations
     // The frontend controls access via session data
@@ -138,9 +148,12 @@ export const updateSchool = mutation({
  * Note: This will fail if qualifications are still assigned to this school
  */
 export const deleteSchool = mutation({
-  args: { schoolId: v.id("schools") },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    schoolId: v.id("schools")
+  },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx);
+    const user = await requireAuth(ctx, args.userId);
 
     // TEMPORARY: Since auth integration isn't complete, allow all operations
     // The frontend controls access via session data
@@ -194,11 +207,12 @@ export const deleteSchool = mutation({
  */
 export const assignInstructor = mutation({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel"), // Instructor user ID to assign
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
 
     // Check if assignment already exists
     const existing = await ctx.db
@@ -252,11 +266,12 @@ export const assignInstructor = mutation({
  */
 export const unassignInstructor = mutation({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    userId: v.id("personnel"), // Instructor user ID to unassign
     schoolId: v.id("schools"),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, "administrator");
+    await requireRole(ctx, args.requesterUserId, "administrator");
 
     const assignment = await ctx.db
       .query("instructorSchools")
@@ -278,9 +293,11 @@ export const unassignInstructor = mutation({
  * List all schools with their instructor counts
  */
 export const listSchoolsWithInstructors = query({
-  args: {},
-  handler: async (ctx) => {
-    await requireAuth(ctx);
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
 
     const schools = await ctx.db.query("schools").collect();
 
@@ -333,8 +350,12 @@ export const listSchoolsWithInstructors = query({
  * Helper query to check which schools an instructor is assigned to
  */
 export const getInstructorAssignmentsByName = query({
-  args: { username: v.string() },
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+    username: v.string()
+  },
   handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
     // Find the personnel by callSign
     const person = await ctx.db
       .query("personnel")
@@ -372,37 +393,41 @@ export const getInstructorAssignmentsByName = query({
  */
 export const listManagedSchools = query({
   args: { 
-    username: v.string(),
-    role: v.union(
+    userId: v.id("personnel"), // User ID from NextAuth session
+    username: v.optional(v.string()), // Deprecated - use userId instead
+    role: v.optional(v.union(
       v.literal("super_admin"),
       v.literal("administrator"),
       v.literal("game_master"),
       v.literal("instructor"),
       v.literal("member")
-    ),
+    )), // Deprecated - will be determined from userId
   },
   handler: async (ctx, args) => {
+    const requester = await requireAuth(ctx, args.userId);
+    // Get requester's roles from database
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", requester._id))
+      .collect();
+
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const roleNames = personnelRoles
+      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+      .filter(Boolean) as string[];
+    
     // Administrators and super_admins can manage all schools
-    if (args.role === "super_admin" || args.role === "administrator") {
+    if (roleNames.includes("super_admin") || roleNames.includes("administrator")) {
       const schools = await ctx.db.query("schools").collect();
       return schools;
     }
 
     // Instructors only see their assigned schools
-    if (args.role === "instructor") {
-      // Find the personnel by callSign
-      const person = await ctx.db
-        .query("personnel")
-        .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
-        .first();
-
-      if (!person) {
-        return [];
-      }
-
+    if (roleNames.includes("instructor")) {
       const assignments = await ctx.db
         .query("instructorSchools")
-        .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
+        .withIndex("by_personnel", (q) => q.eq("personnelId", requester._id))
         .collect();
 
       const schools = await Promise.all(

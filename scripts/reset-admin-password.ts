@@ -10,7 +10,7 @@
  * in the Convex dashboard.
  */
 
-import { scrypt } from "crypto";
+import { scrypt, randomBytes } from "crypto";
 import { promisify } from "util";
 import * as readline from "readline";
 
@@ -94,13 +94,13 @@ async function main() {
     newPassword = generateSecurePassword(16);
   }
 
-  // Hash the password using scrypt (same method as the app)
-  const salt = "anzac-management-salt";
+  // Generate a unique cryptographically secure salt for this password reset
+  const salt = randomBytes(32).toString('hex'); // 32 bytes = 256 bits, hex encoded
   const passwordHashBuffer = await scryptAsync(newPassword, salt, 64) as Buffer;
   const passwordHash = passwordHashBuffer.toString('hex');
 
   console.log("\n╔════════════════════════════════════════════════════════════╗");
-  console.log("║   ✅ PASSWORD HASH GENERATED                              ║");
+  console.log("║   ✅ PASSWORD HASH AND SALT GENERATED                      ║");
   console.log("╚════════════════════════════════════════════════════════════╝\n");
 
   console.log("📋 New Credentials:");
@@ -108,6 +108,7 @@ async function main() {
   console.log(`Username: ${adminUsername}`);
   console.log(`Password: ${newPassword}`);
   console.log(`Password Hash: ${passwordHash}`);
+  console.log(`Password Salt: ${salt}`);
   console.log("─────────────────────────────────────────────────────────────\n");
 
   console.log("⚠️  SAVE THESE CREDENTIALS SECURELY! ⚠️\n");
@@ -131,6 +132,7 @@ async function main() {
 
   console.log("5️⃣  Update the following fields:");
   console.log(`   passwordHash: "${passwordHash}"`);
+  console.log(`   passwordSalt: "${salt}"`);
   console.log("   requirePasswordChange: false");
   console.log(`   lastPasswordChange: ${Date.now()}\n`);
 

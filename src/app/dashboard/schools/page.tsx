@@ -22,7 +22,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,8 +34,7 @@ import {
 } from "@/components/ui/select"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useToast } from "@/hooks/use-toast"
-import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
-import { GraduationCap, Users, Award, UserCheck, Settings, Plus, Edit, Trash2, X } from "lucide-react"
+import { GraduationCap, UserCheck, Settings, Plus, Edit, Trash2, X } from "lucide-react"
 import { Id } from "../../../../convex/_generated/dataModel"
 import { getUserFriendlyError, getSchoolIndicatorColor } from "@/lib/utils"
 import { ColorPicker } from "@/components/ui/color-picker"
@@ -70,15 +68,24 @@ export default function SchoolsPage() {
   const isInstructor = session?.user?.role === 'instructor'
 
   // Fetch data
-  const schoolsWithInstructors = useQuery(api.schools.listSchoolsWithInstructors, {})
+  const schoolsWithInstructors = useQuery(
+    api.schools.listSchoolsWithInstructors,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const managedSchools = useQuery(
     api.schools.listManagedSchools, 
-    session?.user?.name && session?.user?.role 
-      ? { username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
+    session?.user?.id
+      ? { userId: session.user.id as Id<"personnel">, username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
       : "skip"
   )
-  const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, {})
-  const systemUsers = useQuery(api.users.listUsersWithRoles, {})
+  const qualifications = useQuery(
+    api.qualifications.listQualificationsWithCounts,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
+  const systemUsers = useQuery(
+    api.users.listUsersWithRoles,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
 
   // Mutations
   const assignInstructor = useMutation(api.schools.assignInstructor)
@@ -109,14 +116,25 @@ export default function SchoolsPage() {
     if (!selectedSchoolId) return
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       if (isChecked) {
-        await assignInstructor({ userId, schoolId: selectedSchoolId })
+        await assignInstructor({
+          requesterUserId: session.user.id as Id<"personnel">,
+          userId,
+          schoolId: selectedSchoolId
+        })
         toast({
           title: "Instructor assigned",
           description: "The instructor has been successfully assigned to this school.",
         })
       } else {
-        await unassignInstructor({ userId, schoolId: selectedSchoolId })
+        await unassignInstructor({
+          requesterUserId: session.user.id as Id<"personnel">,
+          userId,
+          schoolId: selectedSchoolId
+        })
         toast({
           title: "Instructor removed",
           description: "The instructor has been removed from this school.",
@@ -141,7 +159,11 @@ export default function SchoolsPage() {
     setFormError(null)
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await createSchool({
+        userId: session.user.id as Id<"personnel">,
         name: newSchoolName.trim(),
         abbreviation: newSchoolAbbr.trim(),
         color: newSchoolColor.trim() || undefined,
@@ -169,7 +191,11 @@ export default function SchoolsPage() {
     setFormError(null)
 
     try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
       await updateSchool({
+        userId: session.user.id as Id<"personnel">,
         schoolId: editingSchool._id,
         name: editingSchool.name,
         abbreviation: editingSchool.abbreviation,
@@ -193,7 +219,13 @@ export default function SchoolsPage() {
     if (!deleteSchoolId) return
 
     try {
-      await deleteSchool({ schoolId: deleteSchoolId })
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await deleteSchool({
+        userId: session.user.id as Id<"personnel">,
+        schoolId: deleteSchoolId
+      })
       toast({
         title: "School deleted",
         description: "The school has been successfully deleted.",
