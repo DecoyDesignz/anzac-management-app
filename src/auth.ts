@@ -11,6 +11,8 @@ const CONVEX_URL = getEnvVar("NEXT_PUBLIC_CONVEX_URL")
 const NEXTAUTH_SECRET = getEnvVar("NEXTAUTH_SECRET", undefined, true) // Server-only
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
+  // Trust host for Vercel deployments - required for NextAuth v5 on Vercel
+  trustHost: true,
   providers: [
     Credentials({
       name: "credentials",
