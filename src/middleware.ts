@@ -3,15 +3,23 @@ import { NextResponse } from "next/server"
 
 export default auth((req) => {
   const { nextUrl } = req
+  
+  // Always allow access to login page - let the login page handle redirects client-side
+  // This prevents issues where corrupted/invalid sessions block access
+  if (nextUrl.pathname === "/login") {
+    return NextResponse.next()
+  }
+
+  // Always allow access to maintenance page
+  if (nextUrl.pathname === "/maintenance") {
+    return NextResponse.next()
+  }
+
+  // Get auth status safely - req.auth may be null if session is invalid
   const isLoggedIn = !!req.auth
   const userRole = req.auth?.user?.role
 
   const isProtectedRoute = nextUrl.pathname.startsWith("/dashboard") || nextUrl.pathname === "/change-password"
-
-  // Redirect to dashboard if logged in and trying to access login
-  if (isLoggedIn && nextUrl.pathname === "/login") {
-    return NextResponse.redirect(new URL("/dashboard", nextUrl))
-  }
 
   // Redirect to login if not logged in and trying to access protected route
   if (!isLoggedIn && isProtectedRoute) {

@@ -747,6 +747,7 @@ export default function SystemManagementPage() {
         throw new Error("Session expired. Please log in again.")
       }
       const result = await resetUserPassword({
+        requesterUserId: session.user.id as Id<"personnel">,
         userId: resetPasswordUserId
       })
       setResetTemporaryPassword(result.temporaryPassword)

@@ -376,17 +376,18 @@ export const changePassword = action({
  */
 export const resetUserPassword = action({
   args: {
-    userId: v.id("personnel"),
+    requesterUserId: v.id("personnel"), // Admin performing the reset
+    userId: v.id("personnel"), // Target user whose password is being reset
   },
   handler: async (ctx, args): Promise<{ success: boolean; temporaryPassword: string }> => {
-    // Note: This action doesn't have auth context, so we can't check requesterUserId
-    // We'll need to add it as a parameter or handle it differently
-    // For now, use the target userId as requester (this should be restricted to admins)
-    const person = await ctx.runQuery(api.users.getUser, { 
-      requesterUserId: args.userId, // This should be the admin's ID, but we don't have it here
-      userId: args.userId 
+    // Get the target user (getUser query requires requester to be an administrator)
+    // This call will throw an error if the requester is not an administrator
+    const targetPerson = await ctx.runQuery(api.users.getUser, {
+      requesterUserId: args.requesterUserId,
+      userId: args.userId
     });
-    if (!person) {
+    
+    if (!targetPerson) {
       throw new Error("Personnel not found");
     }
 

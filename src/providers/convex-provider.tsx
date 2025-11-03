@@ -5,6 +5,7 @@ import { ConvexProvider } from "convex/react";
 import { ReactNode, useMemo } from "react";
 import { SessionProvider } from "next-auth/react";
 import { MaintenanceCheck } from "@/components/common/maintenance-check";
+import { ConvexErrorHandler } from "@/components/common/convex-error-handler";
 
 interface ConvexClientProviderProps {
   children: ReactNode;
@@ -71,6 +72,7 @@ export function ConvexClientProvider({ children }: ConvexClientProviderProps) {
   return (
     <SessionProvider>
       <ConvexProvider client={convex}>
+        <ConvexErrorHandler />
         <MaintenanceCheck />
         {children}
       </ConvexProvider>

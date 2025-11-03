@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, Suspense } from "react"
-import { signIn } from "next-auth/react"
+import { useState, Suspense, useEffect } from "react"
+import { signIn, useSession } from "next-auth/react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useForm } from "react-hook-form"
@@ -37,11 +37,13 @@ const formSchema = z.object({
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { data: session, status } = useSession()
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
 
+  // Initialize form hook early to avoid conditional hook usage
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
     defaultValues: {
@@ -49,6 +51,41 @@ function LoginForm() {
       password: "",
     },
   })
+
+  // Redirect to dashboard if already logged in (client-side check)
+  useEffect(() => {
+    if (status === "loading") return // Wait for session to load
+    
+    if (session?.user) {
+      // User is already logged in, redirect to dashboard
+      router.push(callbackUrl)
+      router.refresh()
+    }
+  }, [session, status, router, callbackUrl])
+
+  // Show loading state while checking session
+  if (status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Shield className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
+          <p className="text-muted-foreground">Checking session...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't show login form if already logged in (redirect is in progress)
+  if (session?.user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-center">
+          <Shield className="w-12 h-12 text-primary mx-auto mb-4 animate-pulse" />
+          <p className="text-muted-foreground">Redirecting...</p>
+        </div>
+      </div>
+    )
+  }
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsLoading(true)
