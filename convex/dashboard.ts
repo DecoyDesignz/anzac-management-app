@@ -110,10 +110,29 @@ export const getDashboardOverview = query({
     userId: v.id("personnel"), // User ID from NextAuth session
   },
   handler: async (ctx, args) => {
+    // Validate and authenticate user with detailed error messages
     try {
       await requireAuth(ctx, args.userId);
     } catch (error) {
-      console.error("Auth error in getDashboardOverview:", error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Auth error in getDashboardOverview:", {
+        userId: args.userId,
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      });
+      
+      // Provide more specific error messages
+      if (errorMessage.includes("not found")) {
+        throw new Error("User account not found. Please contact an administrator or try logging in again.");
+      } else if (errorMessage.includes("system access")) {
+        throw new Error("Your account does not have system access. Please contact an administrator.");
+      } else if (errorMessage.includes("inactive")) {
+        throw new Error("Your account is inactive. Please contact an administrator.");
+      } else if (errorMessage.includes("Authentication required")) {
+        throw new Error("Authentication failed. Please log in again.");
+      }
+      
+      // Re-throw with original message if it's already descriptive
       throw error;
     }
 
@@ -450,33 +469,44 @@ export const getDashboardOverview = query({
       weekSchedule = [];
     }
 
-    return {
-      personnel: {
-        total: totalPersonnel,
-        active: activePersonnel,
-        inactive: totalPersonnel - activePersonnel,
-      },
-      systemUsers: {
-        instructors: instructorCount,
-        gameMasters: gameMasterCount,
-      },
-      qualifications: {
-        total: totalQualifications,
-        awarded: totalQualificationsAwarded,
-        avgPerPerson: avgQualificationsPerPerson,
-        topQualifications,
-      },
-      events: {
-        upcoming: upcomingEvents.length,
-        recentPast: pastEvents.length,
-        byStatus: eventsByStatus,
-        upcomingDetails: upcomingEventsWithDetails,
-        nextEvent: nextEvent,
-      },
-      schools: schoolStats,
-      recentPromotions,
-      weekSchedule,
-    };
+    try {
+      return {
+        personnel: {
+          total: totalPersonnel,
+          active: activePersonnel,
+          inactive: totalPersonnel - activePersonnel,
+        },
+        systemUsers: {
+          instructors: instructorCount,
+          gameMasters: gameMasterCount,
+        },
+        qualifications: {
+          total: totalQualifications,
+          awarded: totalQualificationsAwarded,
+          avgPerPerson: avgQualificationsPerPerson,
+          topQualifications,
+        },
+        events: {
+          upcoming: upcomingEvents.length,
+          recentPast: pastEvents.length,
+          byStatus: eventsByStatus,
+          upcomingDetails: upcomingEventsWithDetails,
+          nextEvent: nextEvent,
+        },
+        schools: schoolStats,
+        recentPromotions,
+        weekSchedule,
+      };
+    } catch (error) {
+      // Catch any unexpected errors during data assembly
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("Unexpected error in getDashboardOverview:", {
+        userId: args.userId,
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      });
+      throw new Error(`Failed to load dashboard data: ${errorMessage}`);
+    }
   },
 });
 

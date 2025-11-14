@@ -28,23 +28,36 @@ export async function getAuthenticatedUser(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"personnel"> | string
 ): Promise<Doc<"personnel">> {
-  const user = await ctx.db.get(userId as Id<"personnel">);
-  
-  if (!user) {
-    throw new Error("User not found");
+  // Validate userId format
+  if (!userId) {
+    throw new Error("Authentication required: userId must be provided");
   }
-  
-  // Verify user has system access (passwordHash exists)
-  if (!user.passwordHash) {
-    throw new Error("User does not have system access");
+
+  try {
+    const user = await ctx.db.get(userId as Id<"personnel">);
+    
+    if (!user) {
+      throw new Error(`User not found with ID: ${userId}`);
+    }
+    
+    // Verify user has system access (passwordHash exists)
+    if (!user.passwordHash) {
+      throw new Error("User does not have system access");
+    }
+    
+    // Verify user is active
+    if (user.isActive === false) {
+      throw new Error("User account is inactive");
+    }
+    
+    return user;
+  } catch (error) {
+    // Re-throw with more context if it's not already an Error
+    if (error instanceof Error) {
+      throw error;
+    }
+    throw new Error(`Authentication failed: ${String(error)}`);
   }
-  
-  // Verify user is active
-  if (user.isActive === false) {
-    throw new Error("User account is inactive");
-  }
-  
-  return user;
 }
 
 /**

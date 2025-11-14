@@ -1,35 +1,97 @@
 "use client"
 
 import { useQuery } from "convex/react"
-import { useSession } from "next-auth/react"
+import { useSession, signOut } from "next-auth/react"
+import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { api } from "../../../convex/_generated/api"
 import { Id } from "../../../convex/_generated/dataModel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield } from "lucide-react"
+import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield, AlertTriangle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { DashboardLoading } from "@/components/dashboard/dashboard-loading"
 import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
+import { Button } from "@/components/ui/button"
 
 export default function DashboardPage() {
   const { theme } = useTheme()
   const { data: session } = useSession()
+  const router = useRouter()
   const isDarkMode = theme === 'dark'
+  // Validate session before making queries
+  const isValidSession = session?.user?.id && typeof session.user.id === 'string' && session.user.id.length > 0;
+  
   const dashboardData = useQuery(
     api.dashboard.getDashboardOverview,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
+  
+  // Handle query errors, especially authentication errors
+  useEffect(() => {
+    // Listen for unhandled errors from Convex queries
+    const handleError = (event: ErrorEvent) => {
+      const errorMessage = event.message || ""
+      
+      // Check if this is an authentication-related error
+      if (
+        errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("User account not found") ||
+        errorMessage.includes("does not have system access") ||
+        errorMessage.includes("account is inactive") ||
+        errorMessage.includes("Authentication failed")
+      ) {
+        console.error("Authentication error detected, logging out user...")
+        
+        // Sign out and redirect to login
+        signOut({ 
+          callbackUrl: "/login?error=auth_failed",
+          redirect: true 
+        })
+      }
+    }
+
+    // Listen for unhandled promise rejections
+    const handleUnhandledRejection = (event: PromiseRejectionEvent) => {
+      const error = event.reason
+      const errorMessage = error?.message || String(error) || ""
+      
+      if (
+        errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("User account not found") ||
+        errorMessage.includes("does not have system access") ||
+        errorMessage.includes("account is inactive") ||
+        errorMessage.includes("Authentication failed")
+      ) {
+        console.error("Authentication error detected (promise rejection), logging out user...")
+        event.preventDefault()
+        
+        signOut({ 
+          callbackUrl: "/login?error=auth_failed",
+          redirect: true 
+        })
+      }
+    }
+
+    window.addEventListener("error", handleError)
+    window.addEventListener("unhandledrejection", handleUnhandledRejection)
+
+    return () => {
+      window.removeEventListener("error", handleError)
+      window.removeEventListener("unhandledrejection", handleUnhandledRejection)
+    }
+  }, [])
   const weekSchedule = useQuery(
     api.events.getWeekSchedule,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
   const nextWeekSchedule = useQuery(
     api.events.getNextWeekSchedule,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
   const nextEvent = useQuery(
     api.events.getNextEvent,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
 
   if (!dashboardData || !weekSchedule || !nextWeekSchedule) {
