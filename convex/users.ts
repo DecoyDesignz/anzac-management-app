@@ -193,7 +193,7 @@ export const listUsersWithRoles = query({
     const roles = await ctx.db.query("roles").collect();
     const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
     const userRoleNames = personnelRoles
-      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+      .map(ur => ur?.roleId ? roleMap.get(ur.roleId) : null)
       .filter(Boolean) as string[];
     
     // Check if user is admin or super_admin
@@ -205,43 +205,67 @@ export const listUsersWithRoles = query({
     
     // Get roles for each user
     const usersWithRoles = await Promise.all(
-      usersWithAccess.map(async (user) => {
-        const userPersonnelRoles = await ctx.db
-          .query("userRoles")
-          .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
-          .collect();
+      usersWithAccess.map(async (personnelUser) => {
+        if (!personnelUser || !personnelUser._id) {
+          return null;
+        }
         
-        // Get role details for each user role
-        const rolesWithDetails = await Promise.all(
-          userPersonnelRoles.map(async (ur) => {
-            if (!ur.roleId) return null;
-            const role = await getRoleById(ctx, ur.roleId);
-            return role?.roleName || null;
-          })
-        );
-        
-        const userRoles = rolesWithDetails.filter((r): r is string => r !== null);
-        
-        // Exclude sensitive password fields
-        const { passwordHash, passwordSalt, ...safeUser } = user;
-        return {
-          ...safeUser,
-          name: user.callSign, // For compatibility with frontend
-          roles: userRoles,
-          isActive: user.isActive ?? true, // Ensure isActive is always defined
-        };
+        try {
+          const userPersonnelRoles = await ctx.db
+            .query("userRoles")
+            .withIndex("by_personnel", (q) => q.eq("personnelId", personnelUser._id))
+            .collect();
+          
+          // Get role details for each user role
+          const rolesWithDetails = await Promise.all(
+            userPersonnelRoles.map(async (ur) => {
+              if (!ur || !ur.roleId) return null;
+              try {
+                const role = await getRoleById(ctx, ur.roleId);
+                return role?.roleName || null;
+              } catch (error) {
+                // If role lookup fails, skip this role
+                console.error(`Error looking up role ${ur.roleId}:`, error);
+                return null;
+              }
+            })
+          );
+          
+          const userRoles = rolesWithDetails.filter((r): r is string => r !== null);
+          
+          // Exclude sensitive password fields
+          const { passwordHash, passwordSalt, ...safeUser } = personnelUser;
+          return {
+            ...safeUser,
+            name: personnelUser.callSign || "", // For compatibility with frontend
+            email: personnelUser.email || undefined, // Include email if it exists
+            roles: userRoles, // Always return an array, even if empty
+            isActive: personnelUser.isActive ?? true, // Ensure isActive is always defined
+          };
+        } catch (error) {
+          console.error(`Error processing user ${personnelUser._id}:`, error);
+          return null;
+        }
       })
     );
     
+    // Filter out any null results from error handling
+    const validUsersWithRoles = usersWithRoles.filter((u): u is NonNullable<typeof u> => u !== null);
+    
     // If user is not admin, filter to only show instructors and game masters
     if (!isAdmin) {
-      return usersWithRoles.filter(user => {
-        return user.roles.some(role => role === "instructor" || role === "game_master" || role === "administrator" || role === "super_admin");
+      return validUsersWithRoles.filter(user => {
+        return user.roles && user.roles.length > 0 && user.roles.some(role => 
+          role === "instructor" || 
+          role === "game_master" || 
+          role === "administrator" || 
+          role === "super_admin"
+        );
       });
     }
     
     // Admins see all users
-    return usersWithRoles;
+    return validUsersWithRoles;
   },
 });
 
