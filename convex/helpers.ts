@@ -203,10 +203,13 @@ export async function getInstructorSchools(
 }
 
 /**
- * Check if an instructor can manage a specific school
+ * Check if a user can manage a specific school
  * Returns true if:
  * - User is super_admin or administrator (can manage any school)
- * - User is instructor and is assigned to the school
+ * - User has instructor role (even if they also have game_master role) and is assigned to the school
+ * 
+ * Note: Game Masters without instructor role cannot manage schools, even if assigned.
+ * Game Masters with instructor role can only manage schools they're assigned to.
  */
 export async function canManageSchool(
   ctx: QueryCtx | MutationCtx,
@@ -237,12 +240,19 @@ export async function canManageSchool(
     return true;
   }
 
-  // Game masters and members cannot manage schools
-  if (roleNames.includes("game_master") || roleNames.includes("member")) {
+  // Game masters without instructor role cannot manage schools
+  // (Even if they have game_master role, they need instructor role to manage schools)
+  if (roleNames.includes("game_master") && !roleNames.includes("instructor")) {
     return false;
   }
 
-  // For instructors, check if they're assigned to this school
+  // Members cannot manage schools
+  if (roleNames.includes("member") && !roleNames.includes("instructor")) {
+    return false;
+  }
+
+  // For instructors (including those who also have game_master role), 
+  // check if they're assigned to this school
   if (roleNames.includes("instructor")) {
     const assignment = await ctx.db
       .query("instructorSchools")
