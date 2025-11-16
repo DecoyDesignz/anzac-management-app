@@ -845,6 +845,68 @@ export const createUserAccountInternal = internalMutation({
  */
 
 /**
+ * Internal mutation to grant system access to existing personnel
+ */
+export const grantSystemAccessInternal = internalMutation({
+  args: {
+    personnelId: v.id("personnel"),
+    passwordHash: v.string(),
+    passwordSalt: v.string(), // Unique salt for password hashing
+    roles: v.array(v.union(
+      v.literal("super_admin"),
+      v.literal("administrator"),
+      v.literal("game_master"),
+      v.literal("instructor"),
+      v.literal("member")
+    )),
+  },
+  handler: async (ctx, args) => {
+    // Verify personnel exists
+    const person = await ctx.db.get(args.personnelId);
+    if (!person) {
+      throw new Error("Personnel not found");
+    }
+
+    // Check if already has system access
+    if (person.passwordHash) {
+      throw new Error("Personnel already has system access");
+    }
+
+    // Update personnel with system access
+    await ctx.db.patch(args.personnelId, {
+      passwordHash: args.passwordHash,
+      passwordSalt: args.passwordSalt,
+      isActive: true,
+      requirePasswordChange: true,
+      lastPasswordChange: Date.now(),
+    });
+
+    // Create user roles
+    for (const roleName of args.roles) {
+      const role = await getRoleByName(ctx, roleName);
+      if (role) {
+        // Check if role already exists for this personnel
+        const existingRole = await ctx.db
+          .query("userRoles")
+          .withIndex("by_personnel_and_role", (q) => 
+            q.eq("personnelId", args.personnelId).eq("roleId", role._id)
+          )
+          .first();
+        
+        if (!existingRole) {
+          await ctx.db.insert("userRoles", {
+            personnelId: args.personnelId,
+            roleId: role._id,
+          });
+        }
+      }
+    }
+
+    return { success: true };
+  },
+});
+
+/**
  * Internal mutation to update password
  */
 export const updatePassword = internalMutation({

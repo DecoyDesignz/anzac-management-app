@@ -43,6 +43,42 @@ export const listPersonnel = query({
 });
 
 /**
+ * List all personnel without system access (for granting access)
+ */
+export const listPersonnelWithoutAccess = query({
+  args: {
+    userId: v.id("personnel"), // User ID from NextAuth session
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
+
+    // Get all personnel
+    const allPersonnel = await ctx.db.query("personnel").collect();
+    
+    // Filter to only those without system access (no passwordHash)
+    const personnelWithoutAccess = allPersonnel.filter(p => !p.passwordHash);
+    
+    // Enrich with rank information
+    const personnelWithDetails = await Promise.all(
+      personnelWithoutAccess.map(async (person) => {
+        const rank = person.rankId ? await ctx.db.get(person.rankId) : null;
+        return {
+          _id: person._id,
+          callSign: person.callSign,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          email: person.email,
+          rank,
+          status: person.status,
+        };
+      })
+    );
+
+    return personnelWithDetails;
+  },
+});
+
+/**
  * List all personnel with their qualifications and system roles
  */
 export const listPersonnelWithQualifications = query({

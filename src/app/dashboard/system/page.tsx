@@ -22,6 +22,7 @@ import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
 import { EmptyState } from "@/components/common/empty-state"
 import { LoadingState } from "@/components/common/loading-state"
 import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
+import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select"
 import { Id } from "../../../../convex/_generated/dataModel"
 import {
   DndContext,
@@ -180,6 +181,10 @@ export default function SystemManagementPage() {
     api.users.listUsersWithRoles,
     session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
+  const personnelWithoutAccess = useQuery(
+    api.personnel.listPersonnelWithoutAccess,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const availableRoles = useQuery(api.users.getAllRoles, {})
   const maintenanceMode = useQuery(api.systemSettings.getMaintenanceMode, {})
 
@@ -195,6 +200,7 @@ export default function SystemManagementPage() {
   const updateSchool = useMutation(api.schools.updateSchool)
   const deleteSchool = useMutation(api.schools.deleteSchool)
   const createUserAccount = useAction(api.userActions.createUserAccount)
+  const grantSystemAccess = useAction(api.userActions.grantSystemAccess)
   const updateUser = useMutation(api.users.updateUser)
   const updateUserRoles = useMutation(api.users.updateUserRoles)
   const toggleUserStatus = useMutation(api.users.toggleUserStatus)
@@ -238,6 +244,8 @@ export default function SystemManagementPage() {
   const [qualForm, setQualForm] = useState({ name: "", abbreviation: "", schoolId: "", description: "" })
   const [schoolForm, setSchoolForm] = useState({ name: "", abbreviation: "", description: "" })
   const [userForm, setUserForm] = useState({ name: "", password: "", roles: [] as string[] })
+  const [userFormMode, setUserFormMode] = useState<"new" | "existing">("new")
+  const [selectedExistingPersonnelId, setSelectedExistingPersonnelId] = useState<string>("")
   const [editUserForm, setEditUserForm] = useState({ name: "" })
   const [editRolesForm, setEditRolesForm] = useState<string[]>([])
 
@@ -595,18 +603,38 @@ export default function SystemManagementPage() {
       return
     }
     
+    if (userFormMode === "existing" && !selectedExistingPersonnelId) {
+      setError("Please select an existing personnel member")
+      return
+    }
+    
     setIsSubmitting(true)
     try {
       if (!session?.user?.id) {
         throw new Error("Session expired. Please log in again.")
       }
-      await createUserAccount({
-        requesterUserId: session.user.id as Id<"personnel">,
-        name: userForm.name,
-        password: userForm.password,
-        roles: userForm.roles as Array<"administrator" | "game_master" | "instructor">,
-      })
+      
+      if (userFormMode === "existing") {
+        // Grant system access to existing personnel
+        await grantSystemAccess({
+          requesterUserId: session.user.id as Id<"personnel">,
+          personnelId: selectedExistingPersonnelId as Id<"personnel">,
+          password: userForm.password,
+          roles: userForm.roles as Array<"administrator" | "game_master" | "instructor" | "member" | "super_admin">,
+        })
+      } else {
+        // Create new user account
+        await createUserAccount({
+          requesterUserId: session.user.id as Id<"personnel">,
+          name: userForm.name,
+          password: userForm.password,
+          roles: userForm.roles as Array<"administrator" | "game_master" | "instructor">,
+        })
+      }
+      
       setUserForm({ name: "", password: "", roles: [] })
+      setUserFormMode("new")
+      setSelectedExistingPersonnelId("")
       setGeneratedPassword("")
       setPasswordCopied(false)
       setShowPassword(false)
@@ -1666,20 +1694,72 @@ export default function SystemManagementPage() {
                             <DialogHeader>
                               <DialogTitle>Create New User</DialogTitle>
                               <DialogDescription>
-                                Add a new system user with login credentials
+                                Add a new system user with login credentials or grant access to existing personnel
                               </DialogDescription>
                             </DialogHeader>
                             <div className="grid gap-4 py-4">
                               <div className="grid gap-2">
-                                <Label htmlFor="user-name">Username</Label>
-                                <Input
-                                  id="user-name"
-                                  value={userForm.name}
-                                  onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
-                                  placeholder="e.g., jsmith or john.smith"
-                                  required
-                                />
+                                <Label>User Type</Label>
+                                <div className="flex gap-2">
+                                  <Button
+                                    type="button"
+                                    variant={userFormMode === "new" ? "default" : "outline"}
+                                    onClick={() => {
+                                      setUserFormMode("new")
+                                      setSelectedExistingPersonnelId("")
+                                    }}
+                                  >
+                                    New User
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    variant={userFormMode === "existing" ? "default" : "outline"}
+                                    onClick={() => {
+                                      setUserFormMode("existing")
+                                      setUserForm({ ...userForm, name: "" })
+                                    }}
+                                  >
+                                    Existing Personnel
+                                  </Button>
+                                </div>
                               </div>
+                              {userFormMode === "new" ? (
+                                <div className="grid gap-2">
+                                  <Label htmlFor="user-name">Username</Label>
+                                  <Input
+                                    id="user-name"
+                                    value={userForm.name}
+                                    onChange={(e) => setUserForm({ ...userForm, name: e.target.value })}
+                                    placeholder="e.g., jsmith or john.smith"
+                                    required
+                                  />
+                                </div>
+                              ) : (
+                                <div className="grid gap-2">
+                                  <Label htmlFor="existing-personnel">Select Personnel</Label>
+                                  <SearchableSelect
+                                    id="existing-personnel"
+                                    options={personnelWithoutAccess?.map(p => ({
+                                      value: p._id,
+                                      label: `${p.callSign}${p.rank ? ` (${p.rank.abbreviation})` : ""}`,
+                                    })) || []}
+                                    value={selectedExistingPersonnelId}
+                                    onValueChange={(value) => {
+                                      setSelectedExistingPersonnelId(value)
+                                      const selected = personnelWithoutAccess?.find(p => p._id === value)
+                                      if (selected) {
+                                        setUserForm({ ...userForm, name: selected.callSign })
+                                      }
+                                    }}
+                                    placeholder="Search and select existing personnel..."
+                                    searchPlaceholder="Search by callsign..."
+                                    emptyMessage="No personnel without system access found."
+                                  />
+                                  <p className="text-xs text-muted-foreground">
+                                    Select a personnel member who doesn't have a login account yet
+                                  </p>
+                                </div>
+                              )}
                               <div className="grid gap-2">
                                 <Label>Temporary Password</Label>
                                 <div className="flex gap-2">
@@ -1738,14 +1818,16 @@ export default function SystemManagementPage() {
                               <Button type="button" variant="outline" onClick={() => {
                                 setAddUserOpen(false)
                                 setUserForm({ name: "", password: "", roles: [] })
+                                setUserFormMode("new")
+                                setSelectedExistingPersonnelId("")
                                 setGeneratedPassword("")
                                 setPasswordCopied(false)
                                 setShowPassword(false)
                               }}>
                                 Cancel
                               </Button>
-                              <Button type="submit" disabled={isSubmitting || !generatedPassword}>
-                                {isSubmitting ? "Creating..." : "Create User"}
+                              <Button type="submit" disabled={isSubmitting || !generatedPassword || (userFormMode === "existing" && !selectedExistingPersonnelId)}>
+                                {isSubmitting ? (userFormMode === "existing" ? "Granting Access..." : "Creating...") : (userFormMode === "existing" ? "Grant Access" : "Create User")}
                               </Button>
                             </DialogFooter>
                           </form>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { useQuery, useMutation } from "convex/react"
+import { useQuery, useMutation, useAction } from "convex/react"
 import { useSession } from "next-auth/react"
 import { api } from "../../../../convex/_generated/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -38,9 +38,12 @@ import { LoadingState } from "@/components/common/loading-state"
 import { useToast } from "@/hooks/use-toast"
 import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
+import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
+import { Eye, EyeOff, Copy, Check, KeyRound } from "lucide-react"
 import { Id } from "../../../../convex/_generated/dataModel"
 import { getUserFriendlyError, getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
+import { generateTemporaryPassword } from "../../../../convex/helpers"
 
 type PersonnelFormMode = "add" | "edit" | null
 
@@ -90,6 +93,15 @@ export default function PersonnelPage() {
   } | null>(null)
   const [archivePersonnelConfirm, setArchivePersonnelConfirm] = useState<PersonnelWithQualifications | null>(null)
   
+  // Grant System Access state
+  const [grantAccessDialogOpen, setGrantAccessDialogOpen] = useState(false)
+  const [grantAccessPersonnelId, setGrantAccessPersonnelId] = useState<string | null>(null)
+  const [grantAccessPassword, setGrantAccessPassword] = useState("")
+  const [grantAccessRoles, setGrantAccessRoles] = useState<string[]>([])
+  const [grantAccessPasswordCopied, setGrantAccessPasswordCopied] = useState(false)
+  const [showGrantAccessPassword, setShowGrantAccessPassword] = useState(false)
+  const [isGrantingAccess, setIsGrantingAccess] = useState(false)
+  
   // Form state
   const [formData, setFormData] = useState({
     callSign: "",
@@ -137,6 +149,8 @@ export default function PersonnelPage() {
   const removeQualification = useMutation(api.personnel.removeQualification)
   const deletePersonnel = useMutation(api.personnel.deletePersonnel)
   const updateStaffNotes = useMutation(api.personnel.updateStaffNotes)
+  const grantSystemAccess = useAction(api.userActions.grantSystemAccess)
+  const availableRoles = useQuery(api.users.getAllRoles, {})
   
   // Get full personnel details when detail dialog opens (for staff notes)
   const personnelDetails = useQuery(
@@ -467,6 +481,84 @@ export default function PersonnelPage() {
         description: getUserFriendlyError(error),
         variant: "destructive",
       })
+    }
+  }
+
+  const handleGrantSystemAccess = (person: PersonnelWithQualifications) => {
+    setGrantAccessPersonnelId(person._id)
+    setGrantAccessPassword("")
+    setGrantAccessRoles([])
+    setGrantAccessPasswordCopied(false)
+    setShowGrantAccessPassword(false)
+    setGrantAccessDialogOpen(true)
+  }
+
+  const handleGenerateGrantAccessPassword = () => {
+    const password = generateTemporaryPassword(16)
+    setGrantAccessPassword(password)
+    setGrantAccessPasswordCopied(false)
+  }
+
+  const handleCopyGrantAccessPassword = () => {
+    if (grantAccessPassword) {
+      navigator.clipboard.writeText(grantAccessPassword)
+      setGrantAccessPasswordCopied(true)
+      setTimeout(() => setGrantAccessPasswordCopied(false), 2000)
+    }
+  }
+
+  const getRoleOptions = (): CheckboxOption[] => {
+    if (!availableRoles) return []
+    const isSuperAdmin = session?.user?.role === 'super_admin'
+    return availableRoles
+      .filter(role => isSuperAdmin || role.roleName !== 'super_admin')
+      .map(role => ({
+        id: role.roleName,
+        label: role.displayName || role.roleName,
+      }))
+  }
+
+  const handleConfirmGrantAccess = async () => {
+    if (!grantAccessPersonnelId || !grantAccessPassword || grantAccessRoles.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please generate a password and select at least one role",
+        variant: "destructive",
+      })
+      return
+    }
+
+    setIsGrantingAccess(true)
+    try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      const result = await grantSystemAccess({
+        requesterUserId: session.user.id as Id<"personnel">,
+        personnelId: grantAccessPersonnelId as Id<"personnel">,
+        password: grantAccessPassword,
+        roles: grantAccessRoles as Array<"administrator" | "game_master" | "instructor" | "member" | "super_admin">,
+      })
+
+      toast({
+        title: "System Access Granted",
+        description: `Login account created successfully. Temporary password: ${result.temporaryPassword}`,
+      })
+
+      setGrantAccessDialogOpen(false)
+      setGrantAccessPersonnelId(null)
+      setGrantAccessPassword("")
+      setGrantAccessRoles([])
+      setGrantAccessPasswordCopied(false)
+      setShowGrantAccessPassword(false)
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getUserFriendlyError(error),
+        variant: "destructive",
+      })
+    } finally {
+      setIsGrantingAccess(false)
     }
   }
 
@@ -829,7 +921,7 @@ export default function PersonnelPage() {
                                 <>
                                   <DropdownMenuSeparator />
                                   {!person.hasSystemAccess && (
-                                    <DropdownMenuItem onClick={() => console.log("Grant system access to", person.callSign)}>
+                                    <DropdownMenuItem onClick={() => handleGrantSystemAccess(person)}>
                                       <UserPlus className="w-4 h-4 mr-2" />
                                       Grant System Access
                                     </DropdownMenuItem>
@@ -1343,6 +1435,92 @@ export default function PersonnelPage() {
               disabled={isAwarding || !selectedQualificationId}
             >
               {isAwarding ? "Awarding..." : "Award Qualification"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Grant System Access Dialog */}
+      <Dialog open={grantAccessDialogOpen} onOpenChange={setGrantAccessDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="w-5 h-5 text-primary" />
+              Grant System Access
+            </DialogTitle>
+            <DialogDescription>
+              Create a login account for {personnel?.find(p => p._id === grantAccessPersonnelId)?.callSign || "this personnel member"}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Temporary Password</Label>
+              <div className="flex gap-2 mt-1">
+                <div className="relative flex-1">
+                  <Input
+                    type={showGrantAccessPassword ? "text" : "password"}
+                    value={grantAccessPassword}
+                    readOnly
+                    placeholder="Click Generate to create password"
+                    className="pr-10"
+                  />
+                  {grantAccessPassword && (
+                    <button
+                      type="button"
+                      onClick={() => setShowGrantAccessPassword(!showGrantAccessPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    >
+                      {showGrantAccessPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  )}
+                </div>
+                <Button type="button" variant="outline" onClick={handleGenerateGrantAccessPassword}>
+                  Generate
+                </Button>
+                {grantAccessPassword && (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={handleCopyGrantAccessPassword}
+                    className="w-10 p-0"
+                  >
+                    {grantAccessPasswordCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                User will be required to change password on first login
+              </p>
+            </div>
+            <CheckboxList
+              label="Roles *"
+              options={getRoleOptions()}
+              selected={grantAccessRoles}
+              onChange={(selected) => setGrantAccessRoles(selected)}
+            />
+            <p className="text-xs text-muted-foreground -mt-2">
+              Note: Only Super Admins can grant Super Admin role
+            </p>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setGrantAccessDialogOpen(false)
+                setGrantAccessPersonnelId(null)
+                setGrantAccessPassword("")
+                setGrantAccessRoles([])
+                setGrantAccessPasswordCopied(false)
+                setShowGrantAccessPassword(false)
+              }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleConfirmGrantAccess}
+              disabled={!grantAccessPassword || grantAccessRoles.length === 0 || isGrantingAccess}
+            >
+              {isGrantingAccess ? "Granting Access..." : "Grant Access"}
             </Button>
           </DialogFooter>
         </DialogContent>

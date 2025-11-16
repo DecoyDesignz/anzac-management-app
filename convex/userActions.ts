@@ -397,6 +397,113 @@ export const changePassword = action({
 });
 
 /**
+ * Grant system access to existing personnel (Administrator and Super Admin only)
+ * This creates a login account for personnel that already exists in the system
+ */
+export const grantSystemAccess = action({
+  args: {
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
+    personnelId: v.id("personnel"), // ID of existing personnel to grant access to
+    password: v.string(), // Temporary password
+    roles: v.array(v.union(
+      v.literal("super_admin"),
+      v.literal("administrator"),
+      v.literal("game_master"),
+      v.literal("instructor"),
+      v.literal("member")
+    )),
+  },
+  handler: async (ctx, args): Promise<{ success: boolean; userId: Id<"personnel">; temporaryPassword: string }> => {
+    // Check if requester is an administrator or super_admin
+    const requester = await ctx.runQuery(api.users.getUser, {
+      requesterUserId: args.requesterUserId,
+      userId: args.requesterUserId
+    });
+    
+    if (!requester) {
+      throw new Error("Requester not found");
+    }
+    
+    // Get requester's roles
+    const requesterRoles = await ctx.runQuery(api.users.getUserRoles, {
+      requesterUserId: args.requesterUserId,
+      userId: args.requesterUserId
+    });
+    
+    const roleNames = requesterRoles.map(role => role.roleName).filter(Boolean);
+    const isAdmin = roleNames.includes("administrator") || roleNames.includes("super_admin");
+    
+    if (!isAdmin) {
+      throw new Error("Access denied: Only administrators and super admins can grant system access");
+    }
+    
+    // Check if personnel exists and already has system access
+    const existingPerson = await ctx.runQuery(api.users.getUser, {
+      requesterUserId: args.requesterUserId,
+      userId: args.personnelId
+    });
+    
+    if (!existingPerson) {
+      throw new Error("Personnel not found");
+    }
+    
+    // Check if personnel already has system access by checking if they have user roles
+    // (having roles means they have system access)
+    const existingRoles = await ctx.runQuery(api.users.getUserRoles, {
+      requesterUserId: args.requesterUserId,
+      userId: args.personnelId
+    });
+    
+    if (existingRoles && existingRoles.length > 0) {
+      throw new Error("This personnel member already has system access");
+    }
+    
+    // Also check isActive as an additional indicator
+    if (existingPerson.isActive === true) {
+      // Double-check by trying to get them from the users list
+      const allUsers = await ctx.runQuery(api.users.listUsersWithRoles, {
+        userId: args.requesterUserId
+      });
+      const hasAccess = allUsers?.some(u => u._id === args.personnelId);
+      if (hasAccess) {
+        throw new Error("This personnel member already has system access");
+      }
+    }
+    
+    // Note: Administrators cannot grant super_admin role
+    if (args.roles.includes("super_admin") && !roleNames.includes("super_admin")) {
+      throw new Error("Access denied: Only super admins can grant super admin role");
+    }
+    
+    // Validate password
+    const validation = validatePassword(args.password);
+    if (!validation.isValid) {
+      throw new Error(validation.errors.join(", "));
+    }
+
+    // Generate a unique salt for this user
+    const salt = generateSecureSalt();
+    
+    // Hash password with the generated salt
+    const passwordHash = await hashPassword(args.password, salt);
+
+    // Grant system access to existing personnel
+    await ctx.runMutation(internal.users.grantSystemAccessInternal, {
+      personnelId: args.personnelId,
+      passwordHash,
+      passwordSalt: salt,
+      roles: args.roles,
+    });
+
+    return {
+      success: true,
+      userId: args.personnelId,
+      temporaryPassword: args.password,
+    };
+  },
+});
+
+/**
  * Reset a personnel member's password (Administrator and Super Admin only)
  * This generates a new temporary password and requires the user to change it on next login
  */
