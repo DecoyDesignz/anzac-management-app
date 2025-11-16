@@ -154,7 +154,7 @@ export const getEvent = query({
 });
 
 /**
- * Create a new event (Instructor or higher)
+ * Create a new event (Instructor, Game Master, or Administrator)
  */
 export const createEvent = mutation({
   args: {
@@ -172,7 +172,30 @@ export const createEvent = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "instructor");
+    const user = await requireAuth(ctx, args.userId);
+    
+    // Check if user has instructor, game_master, administrator, or super_admin role
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
+      .collect();
+    
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const roleNames = personnelRoles
+      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+      .filter(Boolean) as string[];
+    
+    const canCreateEvent = roleNames.some(role => 
+      role === "instructor" || 
+      role === "game_master" || 
+      role === "administrator" || 
+      role === "super_admin"
+    );
+    
+    if (!canCreateEvent) {
+      throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
+    }
 
     // Verify event type exists (if provided)
     if (args.eventTypeId) {
@@ -260,7 +283,7 @@ export const createEvent = mutation({
 });
 
 /**
- * Update an event (Instructor or higher)
+ * Update an event (Instructor, Game Master, or Administrator)
  */
 export const updateEvent = mutation({
   args: {
@@ -285,7 +308,30 @@ export const updateEvent = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "instructor");
+    const user = await requireAuth(ctx, args.userId);
+    
+    // Check if user has instructor, game_master, administrator, or super_admin role
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
+      .collect();
+    
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const roleNames = personnelRoles
+      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+      .filter(Boolean) as string[];
+    
+    const canUpdateEvent = roleNames.some(role => 
+      role === "instructor" || 
+      role === "game_master" || 
+      role === "administrator" || 
+      role === "super_admin"
+    );
+    
+    if (!canUpdateEvent) {
+      throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
+    }
 
     const { eventId, ...updates } = args;
 
@@ -337,7 +383,7 @@ export const deleteEvent = mutation({
 });
 
 /**
- * Clear event by booking code (Instructor or higher)
+ * Clear event by booking code (Instructor, Game Master, or Administrator)
  */
 export const clearEventByCode = mutation({
   args: {
@@ -345,7 +391,30 @@ export const clearEventByCode = mutation({
     bookingCode: v.string()
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "instructor");
+    const user = await requireAuth(ctx, args.userId);
+    
+    // Check if user has instructor, game_master, administrator, or super_admin role
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
+      .collect();
+    
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const roleNames = personnelRoles
+      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+      .filter(Boolean) as string[];
+    
+    const canClearEvent = roleNames.some(role => 
+      role === "instructor" || 
+      role === "game_master" || 
+      role === "administrator" || 
+      role === "super_admin"
+    );
+    
+    if (!canClearEvent) {
+      throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
+    }
 
     const event = await ctx.db
       .query("events")

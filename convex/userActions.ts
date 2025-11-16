@@ -241,6 +241,7 @@ export const verifyCredentials = action({
  */
 export const createUserAccount = action({
   args: {
+    requesterUserId: v.id("personnel"), // User ID from NextAuth session (requester)
     name: v.string(), // CallSign - must be unique
     password: v.string(),
     roles: v.array(v.union(
@@ -252,8 +253,33 @@ export const createUserAccount = action({
     )),
   },
   handler: async (ctx, args): Promise<{ success: boolean; userId: Id<"personnel"> }> => {
-    // Note: This action doesn't have auth context, so we rely on the mutation
-    // to do the role checking. Administrators cannot create super_admins.
+    // Check if requester is an administrator or super_admin
+    const requester = await ctx.runQuery(api.users.getUser, {
+      requesterUserId: args.requesterUserId,
+      userId: args.requesterUserId
+    });
+    
+    if (!requester) {
+      throw new Error("Requester not found");
+    }
+    
+    // Get requester's roles
+    const requesterRoles = await ctx.runQuery(api.users.getUserRoles, {
+      requesterUserId: args.requesterUserId,
+      userId: args.requesterUserId
+    });
+    
+    const roleNames = requesterRoles.map(role => role.roleName).filter(Boolean);
+    const isAdmin = roleNames.includes("administrator") || roleNames.includes("super_admin");
+    
+    if (!isAdmin) {
+      throw new Error("Access denied: Only administrators and super admins can create login accounts");
+    }
+    
+    // Note: Administrators cannot create super_admins (enforced by UI, but we check here too)
+    if (args.roles.includes("super_admin") && !roleNames.includes("super_admin")) {
+      throw new Error("Access denied: Only super admins can create super admin accounts");
+    }
     
     // Validate password
     const validation = validatePassword(args.password);

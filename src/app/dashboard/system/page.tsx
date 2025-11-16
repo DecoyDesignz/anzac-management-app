@@ -601,6 +601,7 @@ export default function SystemManagementPage() {
         throw new Error("Session expired. Please log in again.")
       }
       await createUserAccount({
+        requesterUserId: session.user.id as Id<"personnel">,
         name: userForm.name,
         password: userForm.password,
         roles: userForm.roles as Array<"administrator" | "game_master" | "instructor">,

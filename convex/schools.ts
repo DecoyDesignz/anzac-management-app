@@ -46,7 +46,7 @@ export const getSchoolWithQualifications = query({
 });
 
 /**
- * Get instructors assigned to a school
+ * Get instructors assigned to a school (all authenticated users can view)
  */
 export const getSchoolInstructors = query({
   args: {
@@ -54,7 +54,7 @@ export const getSchoolInstructors = query({
     schoolId: v.id("schools")
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "administrator");
+    await requireAuth(ctx, args.userId);
 
     const assignments = await ctx.db
       .query("instructorSchools")
@@ -109,7 +109,7 @@ export const createSchool = mutation({
 });
 
 /**
- * Update a school (Administrator or assigned Instructor)
+ * Update a school (Administrator or assigned Instructor only - Game Masters cannot edit)
  */
 export const updateSchool = mutation({
   args: {
@@ -123,13 +123,11 @@ export const updateSchool = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx, args.userId);
 
-    // TEMPORARY: Since auth integration isn't complete, allow all operations
-    // The frontend controls access via session data
-    // Check if user can manage this school
-    // const canManage = await canManageSchool(ctx, user._id, args.schoolId);
-    // if (!canManage) {
-    //   throw new Error("You do not have permission to manage this school");
-    // }
+    // Check if user can manage this school (administrator or assigned instructor)
+    const canManage = await canManageSchool(ctx, user._id, args.schoolId);
+    if (!canManage) {
+      throw new Error("You do not have permission to manage this school. Only administrators and assigned instructors can edit schools.");
+    }
 
     const { schoolId, ...updates } = args;
     
@@ -144,7 +142,7 @@ export const updateSchool = mutation({
 });
 
 /**
- * Delete a school (Administrator or assigned Instructor)
+ * Delete a school (Administrator or assigned Instructor only - Game Masters cannot delete)
  * Note: This will fail if qualifications are still assigned to this school
  */
 export const deleteSchool = mutation({
@@ -155,13 +153,11 @@ export const deleteSchool = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx, args.userId);
 
-    // TEMPORARY: Since auth integration isn't complete, allow all operations
-    // The frontend controls access via session data
-    // Check if user can manage this school
-    // const canManage = await canManageSchool(ctx, user._id, args.schoolId);
-    // if (!canManage) {
-    //   throw new Error("You do not have permission to manage this school");
-    // }
+    // Check if user can manage this school (administrator or assigned instructor)
+    const canManage = await canManageSchool(ctx, user._id, args.schoolId);
+    if (!canManage) {
+      throw new Error("You do not have permission to delete this school. Only administrators and assigned instructors can delete schools.");
+    }
 
     // Get the school name for better error messages
     const school = await ctx.db.get(args.schoolId);
@@ -389,7 +385,10 @@ export const getInstructorAssignmentsByName = query({
 
 /**
  * List schools that the current user is authorized to manage
- * Takes username from args since auth integration isn't complete
+ * - Administrators and Super Admins: Can manage all schools
+ * - Instructors: Can manage only their assigned schools
+ * - Game Masters: Can view all schools (read-only, returned here for visibility)
+ * - Others: Cannot manage schools
  */
 export const listManagedSchools = query({
   args: { 
@@ -439,7 +438,13 @@ export const listManagedSchools = query({
       return schools.filter((s) => s !== null);
     }
 
-    // Game masters, members and others cannot manage schools
+    // Game masters can view all schools (read-only)
+    if (roleNames.includes("game_master")) {
+      const schools = await ctx.db.query("schools").collect();
+      return schools;
+    }
+
+    // Members and others cannot manage schools
     return [];
   },
 });

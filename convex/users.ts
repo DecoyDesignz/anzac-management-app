@@ -172,15 +172,33 @@ export const listUsers = query({
 });
 
 /**
- * List all personnel with system access and their roles (Administrator and Super Admin only)
+ * List all personnel with system access and their roles
+ * - Administrators and Super Admins: See all users
+ * - Instructors and Game Masters: See only other instructors and game masters
  */
 export const listUsersWithRoles = query({
   args: {
     userId: v.id("personnel"), // User ID from NextAuth session
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "administrator");
-
+    // Require authentication and check user's role
+    const user = await requireAuth(ctx, args.userId);
+    
+    // Get user's roles
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
+      .collect();
+    
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+    const userRoleNames = personnelRoles
+      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+      .filter(Boolean) as string[];
+    
+    // Check if user is admin or super_admin
+    const isAdmin = userRoleNames.includes("administrator") || userRoleNames.includes("super_admin");
+    
     // Get all personnel with passwordHash (system access)
     const allPersonnel = await ctx.db.query("personnel").collect();
     const usersWithAccess = allPersonnel.filter(p => p.passwordHash !== undefined);
@@ -188,31 +206,41 @@ export const listUsersWithRoles = query({
     // Get roles for each user
     const usersWithRoles = await Promise.all(
       usersWithAccess.map(async (user) => {
-        const personnelRoles = await ctx.db
+        const userPersonnelRoles = await ctx.db
           .query("userRoles")
           .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
           .collect();
         
         // Get role details for each user role
         const rolesWithDetails = await Promise.all(
-          personnelRoles.map(async (ur) => {
+          userPersonnelRoles.map(async (ur) => {
             if (!ur.roleId) return null;
             const role = await getRoleById(ctx, ur.roleId);
             return role?.roleName || null;
           })
         );
         
+        const userRoles = rolesWithDetails.filter((r): r is string => r !== null);
+        
         // Exclude sensitive password fields
         const { passwordHash, passwordSalt, ...safeUser } = user;
         return {
           ...safeUser,
           name: user.callSign, // For compatibility with frontend
-          roles: rolesWithDetails.filter((r): r is string => r !== null), // Filter out nulls and ensure type safety
+          roles: userRoles,
           isActive: user.isActive ?? true, // Ensure isActive is always defined
         };
       })
     );
     
+    // If user is not admin, filter to only show instructors and game masters
+    if (!isAdmin) {
+      return usersWithRoles.filter(user => {
+        return user.roles.some(role => role === "instructor" || role === "game_master" || role === "administrator" || role === "super_admin");
+      });
+    }
+    
+    // Admins see all users
     return usersWithRoles;
   },
 });

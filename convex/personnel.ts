@@ -212,7 +212,8 @@ export const getPersonnelDetails = query({
 });
 
 /**
- * Create a new personnel member (Instructor or higher)
+ * Create a new personnel member (All staff: Instructor, Game Master, Administrator, or Super Admin)
+ * Note: This does NOT create a login account - only Administrators can do that
  */
 export const createPersonnel = mutation({
   args: {
@@ -233,7 +234,14 @@ export const createPersonnel = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "instructor");
+    const user = await requireAuth(ctx, args.userId);
+    
+    // Check if user has staff role (instructor, game_master, administrator, or super_admin)
+    const isUserStaff = await isStaff(ctx, args.userId);
+    
+    if (!isUserStaff) {
+      throw new Error("Access denied: Requires staff role (instructor, game master, administrator, or super admin)");
+    }
 
     // Find the Private rank to assign by default
     const privateRank = await ctx.db
@@ -279,7 +287,7 @@ export const createPersonnel = mutation({
 });
 
 /**
- * Update personnel information (Administrator or Instructor)
+ * Update personnel information (All staff: Instructor, Game Master, Administrator, or Super Admin)
  */
 export const updatePersonnel = mutation({
   args: {
@@ -302,7 +310,14 @@ export const updatePersonnel = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "instructor");
+    const user = await requireAuth(ctx, args.userId);
+    
+    // Check if user has staff role (instructor, game_master, administrator, or super_admin)
+    const isUserStaff = await isStaff(ctx, args.userId);
+    
+    if (!isUserStaff) {
+      throw new Error("Access denied: Requires staff role (instructor, game master, administrator, or super admin)");
+    }
 
     const { personnelId, ...updates } = args;
     

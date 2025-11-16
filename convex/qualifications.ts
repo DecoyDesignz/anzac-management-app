@@ -130,7 +130,7 @@ export const listQualificationsWithCounts = query({
 });
 
 /**
- * Create a new qualification (Administrator or assigned Instructor)
+ * Create a new qualification (Administrator or assigned Instructor only - Game Masters cannot create)
  */
 export const createQualification = mutation({
   args: {
@@ -143,13 +143,11 @@ export const createQualification = mutation({
   handler: async (ctx, args) => {
     const user = await requireAuth(ctx, args.userId);
 
-    // TEMPORARY: Since auth integration isn't complete, allow all operations
-    // The frontend controls access via session data
-    // Check if user can manage this school
-    // const canManage = await canManageSchool(ctx, user._id, args.schoolId);
-    // if (!canManage) {
-    //   throw new Error("You do not have permission to manage this school's qualifications");
-    // }
+    // Check if user can manage this school (administrator or assigned instructor)
+    const canManage = await canManageSchool(ctx, user._id, args.schoolId);
+    if (!canManage) {
+      throw new Error("You do not have permission to manage this school's qualifications. Only administrators and assigned instructors can create qualifications.");
+    }
 
     // Verify school exists
     const school = await ctx.db.get(args.schoolId);
@@ -179,7 +177,7 @@ export const createQualification = mutation({
 });
 
 /**
- * Update a qualification (Administrator or assigned Instructor)
+ * Update a qualification (Administrator or assigned Instructor only - Game Masters cannot edit)
  */
 export const updateQualification = mutation({
   args: {
@@ -199,28 +197,25 @@ export const updateQualification = mutation({
       throw new Error("Qualification not found");
     }
 
-    // TEMPORARY: Since auth integration isn't complete, allow all operations
-    // The frontend controls access via session data
-    // Check if user can manage the current school
-    // const canManageCurrent = await canManageSchool(ctx, user._id, qualification.schoolId);
-    // if (!canManageCurrent) {
-    //   throw new Error("You do not have permission to manage this qualification");
-    // }
+    // Check if user can manage the current school (administrator or assigned instructor)
+    const canManageCurrent = await canManageSchool(ctx, user._id, qualification.schoolId);
+    if (!canManageCurrent) {
+      throw new Error("You do not have permission to manage this qualification. Only administrators and assigned instructors can edit qualifications.");
+    }
 
     const { qualificationId, ...updates } = args;
     
-    // If changing school, verify it exists
+    // If changing school, verify it exists and user can manage it
     if (updates.schoolId) {
       const school = await ctx.db.get(updates.schoolId);
       if (!school) {
         throw new Error("School not found");
       }
 
-      // TEMPORARY: Auth check disabled
-      // const canManageNew = await canManageSchool(ctx, user._id, updates.schoolId);
-      // if (!canManageNew) {
-      //   throw new Error("You do not have permission to move this qualification to the target school");
-      // }
+      const canManageNew = await canManageSchool(ctx, user._id, updates.schoolId);
+      if (!canManageNew) {
+        throw new Error("You do not have permission to move this qualification to the target school");
+      }
     }
     
     // Remove undefined values
@@ -283,7 +278,7 @@ export const getPersonnelWithQualification = query({
 });
 
 /**
- * Delete a qualification (Administrator or assigned Instructor)
+ * Delete a qualification (Administrator or assigned Instructor only - Game Masters cannot delete)
  * Note: This will fail if personnel have been awarded this qualification
  */
 export const deleteQualification = mutation({
@@ -300,13 +295,11 @@ export const deleteQualification = mutation({
       throw new Error("Qualification not found.");
     }
 
-    // TEMPORARY: Since auth integration isn't complete, allow all operations
-    // The frontend controls access via session data
-    // Check if user can manage this qualification's school
-    // const canManage = await canManageSchool(ctx, user._id, qualification.schoolId);
-    // if (!canManage) {
-    //   throw new Error("You do not have permission to manage this qualification");
-    // }
+    // Check if user can manage this qualification's school (administrator or assigned instructor)
+    const canManage = await canManageSchool(ctx, user._id, qualification.schoolId);
+    if (!canManage) {
+      throw new Error("You do not have permission to delete this qualification. Only administrators and assigned instructors can delete qualifications.");
+    }
 
     // Check if any personnel have this qualification
     const personnelQuals = await ctx.db

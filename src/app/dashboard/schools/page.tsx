@@ -84,7 +84,7 @@ export default function SchoolsPage() {
   )
   const systemUsers = useQuery(
     api.users.listUsersWithRoles,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    session?.user?.id && isAdmin ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
 
   // Mutations
@@ -246,7 +246,7 @@ export default function SchoolsPage() {
   }
 
   // Loading state
-  if (!schoolsWithInstructors || !qualifications || !systemUsers || !managedSchools) {
+  if (!schoolsWithInstructors || !qualifications || !managedSchools || (isAdmin && !systemUsers)) {
     return <LoadingState type="skeleton" count={5} />
   }
 
