@@ -16,9 +16,10 @@ async function getRoleByName(ctx: any, roleName: string) {
 
 /**
  * Get role by role ID
+ * Returns null if role doesn't exist
  */
-async function getRoleById(ctx: any, roleId: string) {
-  return await ctx.db.get(roleId as any);
+async function getRoleById(ctx: any, roleId: Id<"roles">) {
+  return await ctx.db.get(roleId) ?? null;
 }
 
 /**
@@ -181,7 +182,7 @@ export const listUsersWithRoles = query({
     await requireRole(ctx, args.userId, "administrator");
 
     // Get all personnel with passwordHash (system access)
-    const allPersonnel = await ctx.db.query("personnel").order("desc").collect();
+    const allPersonnel = await ctx.db.query("personnel").collect();
     const usersWithAccess = allPersonnel.filter(p => p.passwordHash !== undefined);
     
     // Get roles for each user
@@ -195,9 +196,9 @@ export const listUsersWithRoles = query({
         // Get role details for each user role
         const rolesWithDetails = await Promise.all(
           personnelRoles.map(async (ur) => {
-            if (!ur.roleId) return 'unknown';
+            if (!ur.roleId) return null;
             const role = await getRoleById(ctx, ur.roleId);
-            return role?.roleName || 'unknown';
+            return role?.roleName || null;
           })
         );
         
@@ -206,7 +207,8 @@ export const listUsersWithRoles = query({
         return {
           ...safeUser,
           name: user.callSign, // For compatibility with frontend
-          roles: rolesWithDetails,
+          roles: rolesWithDetails.filter((r): r is string => r !== null), // Filter out nulls and ensure type safety
+          isActive: user.isActive ?? true, // Ensure isActive is always defined
         };
       })
     );
