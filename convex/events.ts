@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
+import { Id } from "./_generated/dataModel";
 import { requireAuth, requireRole } from "./helpers";
 
 /**
@@ -356,12 +357,18 @@ export const updateEvent = mutation({
     }
 
     // Handle instructor updates separately if provided
-    if (args.instructorIds !== undefined) {
+    if (args.instructorIds !== undefined && args.instructorIds.length > 0) {
+      // Cache roles query to avoid multiple queries
+      const allRoles = await ctx.db.query("roles").collect();
+      const roleMap = new Map(allRoles.map(role => [role._id, role.roleName]));
+
       // Verify all instructors exist and have appropriate roles
+      const instructorData = new Map<Id<"personnel">, { hasInstructor: boolean; hasGameMaster: boolean }>();
+      
       for (const instructorId of args.instructorIds) {
         const instructor = await ctx.db.get(instructorId);
         if (!instructor) {
-          throw new Error("Instructor not found");
+          throw new Error(`Instructor not found: ${instructorId}`);
         }
 
         // Check if personnel has instructor or game_master role
@@ -369,16 +376,27 @@ export const updateEvent = mutation({
           .query("userRoles")
           .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
           .collect();
-
-        const roles = await ctx.db.query("roles").collect();
-        const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
         
-        const hasInstructorRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "instructor");
-        const hasGameMasterRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "game_master");
+        const hasInstructorRole = userRoles.some(ur => {
+          if (!ur.roleId) return false;
+          const roleName = roleMap.get(ur.roleId);
+          return roleName === "instructor";
+        });
+        const hasGameMasterRole = userRoles.some(ur => {
+          if (!ur.roleId) return false;
+          const roleName = roleMap.get(ur.roleId);
+          return roleName === "game_master";
+        });
 
         if (!hasInstructorRole && !hasGameMasterRole) {
-          throw new Error("Personnel must be an instructor or game master");
+          throw new Error(`Personnel ${instructor.callSign || instructorId} must be an instructor or game master`);
         }
+
+        // Store the role information for later use
+        instructorData.set(instructorId, {
+          hasInstructor: hasInstructorRole,
+          hasGameMaster: hasGameMasterRole,
+        });
       }
 
       // Delete existing event instructors
@@ -391,28 +409,31 @@ export const updateEvent = mutation({
         await ctx.db.delete(instructor._id);
       }
 
-      // Create new event instructor assignments
+      // Create new event instructor assignments using cached role data
       for (const instructorId of args.instructorIds) {
-        // Determine role based on personnel roles
-        const userRoles = await ctx.db
-          .query("userRoles")
-          .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
-          .collect();
-
-        const roles = await ctx.db.query("roles").collect();
-        const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
-        
-        const hasInstructorRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "instructor");
-        const hasGameMasterRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "game_master");
+        const roleInfo = instructorData.get(instructorId);
+        if (!roleInfo) {
+          throw new Error(`Internal error: role data not found for instructor ${instructorId}`);
+        }
 
         // Assign the primary role (prefer game_master if both exist)
-        const role = hasGameMasterRole ? "game_master" : "instructor";
+        const role = roleInfo.hasGameMaster ? "game_master" : "instructor";
 
         await ctx.db.insert("eventInstructors", {
           eventId: args.eventId,
           personnelId: instructorId,
           role,
         });
+      }
+    } else if (args.instructorIds !== undefined && args.instructorIds.length === 0) {
+      // If empty array is provided, clear all instructors
+      const existingInstructors = await ctx.db
+        .query("eventInstructors")
+        .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+        .collect();
+
+      for (const instructor of existingInstructors) {
+        await ctx.db.delete(instructor._id);
       }
     }
 
