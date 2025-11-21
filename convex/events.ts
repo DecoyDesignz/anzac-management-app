@@ -309,148 +309,187 @@ export const updateEvent = mutation({
     notes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    const user = await requireAuth(ctx, args.userId);
-    
-    // Check if user has instructor, game_master, administrator, or super_admin role
-    const personnelRoles = await ctx.db
-      .query("userRoles")
-      .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
-      .collect();
-    
-    const roles = await ctx.db.query("roles").collect();
-    const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
-    const roleNames = personnelRoles
-      .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
-      .filter(Boolean) as string[];
-    
-    const canUpdateEvent = roleNames.some(role => 
-      role === "instructor" || 
-      role === "game_master" || 
-      role === "administrator" || 
-      role === "super_admin"
-    );
-    
-    if (!canUpdateEvent) {
-      throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
-    }
+    try {
+      console.log("[updateEvent] Starting update with args:", {
+        eventId: args.eventId,
+        userId: args.userId,
+        hasInstructorIds: args.instructorIds !== undefined,
+        instructorIdsCount: args.instructorIds?.length || 0,
+        otherUpdates: Object.keys(args).filter(k => k !== "eventId" && k !== "userId" && k !== "instructorIds" && args[k as keyof typeof args] !== undefined),
+      });
 
-    // Verify event exists
-    const event = await ctx.db.get(args.eventId);
-    if (!event) {
-      throw new Error("Event not found");
-    }
-
-    // Verify event type exists (if provided)
-    if (args.eventTypeId) {
-      const eventType = await ctx.db.get(args.eventTypeId);
-      if (!eventType) {
-        throw new Error("Event type not found");
-      }
-    }
-
-    // Verify server exists (if provided)
-    if (args.serverId) {
-      const server = await ctx.db.get(args.serverId);
-      if (!server) {
-        throw new Error("Server not found");
-      }
-    }
-
-    // Handle instructor updates separately if provided
-    if (args.instructorIds !== undefined && args.instructorIds.length > 0) {
-      // Cache roles query to avoid multiple queries
-      const allRoles = await ctx.db.query("roles").collect();
-      const roleMap = new Map(allRoles.map(role => [role._id, role.roleName]));
-
-      // Verify all instructors exist and have appropriate roles
-      const instructorData = new Map<Id<"personnel">, { hasInstructor: boolean; hasGameMaster: boolean }>();
+      const user = await requireAuth(ctx, args.userId);
+      console.log("[updateEvent] User authenticated:", user._id);
       
-      for (const instructorId of args.instructorIds) {
-        const instructor = await ctx.db.get(instructorId);
-        if (!instructor) {
-          throw new Error(`Instructor not found: ${instructorId}`);
-        }
+      // Check if user has instructor, game_master, administrator, or super_admin role
+      const personnelRoles = await ctx.db
+        .query("userRoles")
+        .withIndex("by_personnel", (q) => q.eq("personnelId", user._id))
+        .collect();
+      
+      const roles = await ctx.db.query("roles").collect();
+      const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+      const roleNames = personnelRoles
+        .map(ur => ur.roleId ? roleMap.get(ur.roleId) : null)
+        .filter(Boolean) as string[];
+      
+      console.log("[updateEvent] User roles:", roleNames);
+      
+      const canUpdateEvent = roleNames.some(role => 
+        role === "instructor" || 
+        role === "game_master" || 
+        role === "administrator" || 
+        role === "super_admin"
+      );
+      
+      if (!canUpdateEvent) {
+        throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
+      }
 
-        // Check if personnel has instructor or game_master role
-        const userRoles = await ctx.db
-          .query("userRoles")
-          .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
-          .collect();
+      // Verify event exists
+      const event = await ctx.db.get(args.eventId);
+      if (!event) {
+        throw new Error(`Event not found: ${args.eventId}`);
+      }
+      console.log("[updateEvent] Event found:", event._id);
+
+      // Verify event type exists (if provided)
+      if (args.eventTypeId) {
+        const eventType = await ctx.db.get(args.eventTypeId);
+        if (!eventType) {
+          throw new Error(`Event type not found: ${args.eventTypeId}`);
+        }
+      }
+
+      // Verify server exists (if provided)
+      if (args.serverId) {
+        const server = await ctx.db.get(args.serverId);
+        if (!server) {
+          throw new Error(`Server not found: ${args.serverId}`);
+        }
+      }
+
+      // Handle instructor updates separately if provided
+      if (args.instructorIds !== undefined && args.instructorIds.length > 0) {
+        console.log("[updateEvent] Processing instructor updates for", args.instructorIds.length, "instructors");
         
-        const hasInstructorRole = userRoles.some(ur => {
-          if (!ur.roleId) return false;
-          const roleName = roleMap.get(ur.roleId);
-          return roleName === "instructor";
-        });
-        const hasGameMasterRole = userRoles.some(ur => {
-          if (!ur.roleId) return false;
-          const roleName = roleMap.get(ur.roleId);
-          return roleName === "game_master";
-        });
+        // Cache roles query to avoid multiple queries
+        const allRoles = await ctx.db.query("roles").collect();
+        const roleMap = new Map(allRoles.map(role => [role._id, role.roleName]));
+        console.log("[updateEvent] Loaded", allRoles.length, "roles");
 
-        if (!hasInstructorRole && !hasGameMasterRole) {
-          throw new Error(`Personnel ${instructor.callSign || instructorId} must be an instructor or game master`);
+        // Verify all instructors exist and have appropriate roles
+        const instructorData = new Map<Id<"personnel">, { hasInstructor: boolean; hasGameMaster: boolean }>();
+        
+        for (const instructorId of args.instructorIds) {
+          console.log("[updateEvent] Validating instructor:", instructorId);
+          const instructor = await ctx.db.get(instructorId);
+          if (!instructor) {
+            throw new Error(`Instructor not found: ${instructorId}`);
+          }
+
+          // Check if personnel has instructor or game_master role
+          const userRoles = await ctx.db
+            .query("userRoles")
+            .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
+            .collect();
+          
+          console.log("[updateEvent] Instructor", instructorId, "has", userRoles.length, "roles");
+          
+          const hasInstructorRole = userRoles.some(ur => {
+            if (!ur.roleId) return false;
+            const roleName = roleMap.get(ur.roleId);
+            return roleName === "instructor";
+          });
+          const hasGameMasterRole = userRoles.some(ur => {
+            if (!ur.roleId) return false;
+            const roleName = roleMap.get(ur.roleId);
+            return roleName === "game_master";
+          });
+
+          console.log("[updateEvent] Instructor", instructorId, "- hasInstructor:", hasInstructorRole, "hasGameMaster:", hasGameMasterRole);
+
+          if (!hasInstructorRole && !hasGameMasterRole) {
+            throw new Error(`Personnel ${instructor.callSign || instructorId} must be an instructor or game master`);
+          }
+
+          // Store the role information for later use
+          instructorData.set(instructorId, {
+            hasInstructor: hasInstructorRole,
+            hasGameMaster: hasGameMasterRole,
+          });
         }
 
-        // Store the role information for later use
-        instructorData.set(instructorId, {
-          hasInstructor: hasInstructorRole,
-          hasGameMaster: hasGameMasterRole,
-        });
-      }
+        // Delete existing event instructors
+        console.log("[updateEvent] Deleting existing instructors");
+        const existingInstructors = await ctx.db
+          .query("eventInstructors")
+          .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+          .collect();
 
-      // Delete existing event instructors
-      const existingInstructors = await ctx.db
-        .query("eventInstructors")
-        .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
-        .collect();
-
-      for (const instructor of existingInstructors) {
-        await ctx.db.delete(instructor._id);
-      }
-
-      // Create new event instructor assignments using cached role data
-      for (const instructorId of args.instructorIds) {
-        const roleInfo = instructorData.get(instructorId);
-        if (!roleInfo) {
-          throw new Error(`Internal error: role data not found for instructor ${instructorId}`);
+        console.log("[updateEvent] Found", existingInstructors.length, "existing instructors to delete");
+        for (const instructor of existingInstructors) {
+          await ctx.db.delete(instructor._id);
         }
 
-        // Assign the primary role (prefer game_master if both exist)
-        const role = roleInfo.hasGameMaster ? "game_master" : "instructor";
+        // Create new event instructor assignments using cached role data
+        console.log("[updateEvent] Creating new instructor assignments");
+        for (const instructorId of args.instructorIds) {
+          const roleInfo = instructorData.get(instructorId);
+          if (!roleInfo) {
+            throw new Error(`Internal error: role data not found for instructor ${instructorId}`);
+          }
 
-        await ctx.db.insert("eventInstructors", {
-          eventId: args.eventId,
-          personnelId: instructorId,
-          role,
-        });
+          // Assign the primary role (prefer game_master if both exist)
+          const role = roleInfo.hasGameMaster ? "game_master" : "instructor";
+          console.log("[updateEvent] Inserting instructor", instructorId, "with role", role);
+
+          await ctx.db.insert("eventInstructors", {
+            eventId: args.eventId,
+            personnelId: instructorId,
+            role,
+          });
+        }
+        console.log("[updateEvent] Instructor updates completed");
+      } else if (args.instructorIds !== undefined && args.instructorIds.length === 0) {
+        console.log("[updateEvent] Clearing all instructors (empty array provided)");
+        // If empty array is provided, clear all instructors
+        const existingInstructors = await ctx.db
+          .query("eventInstructors")
+          .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+          .collect();
+
+        for (const instructor of existingInstructors) {
+          await ctx.db.delete(instructor._id);
+        }
       }
-    } else if (args.instructorIds !== undefined && args.instructorIds.length === 0) {
-      // If empty array is provided, clear all instructors
-      const existingInstructors = await ctx.db
-        .query("eventInstructors")
-        .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
-        .collect();
 
-      for (const instructor of existingInstructors) {
-        await ctx.db.delete(instructor._id);
+      // Prepare updates for the event itself (exclude userId, eventId, and instructorIds)
+      const { userId, eventId, instructorIds, ...updates } = args;
+
+      // Remove undefined values
+      const cleanUpdates = Object.fromEntries(
+        Object.entries(updates).filter(([_, v]) => v !== undefined)
+      );
+
+      console.log("[updateEvent] Event updates to apply:", Object.keys(cleanUpdates));
+
+      // Only patch if there are updates
+      if (Object.keys(cleanUpdates).length > 0) {
+        await ctx.db.patch(eventId, cleanUpdates);
+        console.log("[updateEvent] Event patched successfully");
       }
+
+      console.log("[updateEvent] Update completed successfully");
+      return { success: true };
+    } catch (error) {
+      console.error("[updateEvent] Error occurred:", error);
+      // Re-throw with more context
+      if (error instanceof Error) {
+        throw new Error(`Failed to update event: ${error.message}`);
+      }
+      throw error;
     }
-
-    // Prepare updates for the event itself (exclude instructorIds)
-    const { eventId, instructorIds, ...updates } = args;
-
-    // Remove undefined values
-    const cleanUpdates = Object.fromEntries(
-      Object.entries(updates).filter(([_, v]) => v !== undefined)
-    );
-
-    // Only patch if there are updates
-    if (Object.keys(cleanUpdates).length > 0) {
-      await ctx.db.patch(eventId, cleanUpdates);
-    }
-
-    return { success: true };
   },
 });
 
