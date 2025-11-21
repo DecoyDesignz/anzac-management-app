@@ -138,7 +138,16 @@ export default function CalendarPage() {
     setSelectedEvent(event)
     
     // Populate edit form with event data, converting from UTC to Sydney time for display
-    const eventData = event as { startDate: number; endDate: number; title?: string; serverId?: string; instructors?: Array<{ userId: string }>; description?: string; maxParticipants?: number; status?: string }
+    const eventData = event as { 
+      startDate: number; 
+      endDate: number; 
+      title?: string; 
+      serverId?: string; 
+      instructors?: Array<{ personnelId?: Id<"personnel">; user?: { _id: Id<"personnel"> } }>; 
+      description?: string; 
+      maxParticipants?: number; 
+      status?: string 
+    }
     
     // Format the date/time in Sydney timezone
     const eventDate = new Date(eventData.startDate)
@@ -154,13 +163,16 @@ export default function CalendarPage() {
     const [year, month, day] = sydneyDateStr.split('-').map(Number)
     const formDate = new Date(year, month - 1, day)
     
+    // Extract instructor IDs - use personnelId if available, otherwise fall back to user._id
+    const instructorIds = eventData.instructors?.map((inst) => inst.personnelId || inst.user?._id).filter((id): id is Id<"personnel"> => id !== undefined) || []
+    
     setEditForm({
       title: eventData.title || "",
       date: formDate,
       startTime: startTime,
       endTime: endTime,
       serverId: eventData.serverId || "",
-      instructorIds: eventData.instructors?.map((inst) => inst.userId) || [],
+      instructorIds: instructorIds,
       description: eventData.description || "",
       maxParticipants: eventData.maxParticipants?.toString() || "",
       status: (eventData.status as "scheduled" | "in_progress" | "completed" | "cancelled") || "scheduled",
@@ -226,6 +238,7 @@ export default function CalendarPage() {
         startDate: startTimestamp,
         endDate: endTimestamp,
         serverId: editForm.serverId as Id<"servers">,
+        instructorIds: editForm.instructorIds.length > 0 ? editForm.instructorIds as Array<Id<"personnel">> : undefined,
         maxParticipants: editForm.maxParticipants ? parseInt(editForm.maxParticipants) : undefined,
         status: editForm.status,
         description: editForm.description,

@@ -295,7 +295,7 @@ export const updateEvent = mutation({
     endDate: v.optional(v.number()),
     eventTypeId: v.optional(v.id("eventTypes")),
     serverId: v.optional(v.id("servers")),
-    instructorId: v.optional(v.id("systemUsers")),
+    instructorIds: v.optional(v.array(v.id("personnel"))),
     maxParticipants: v.optional(v.number()),
     status: v.optional(
       v.union(
@@ -333,14 +333,102 @@ export const updateEvent = mutation({
       throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
     }
 
-    const { eventId, ...updates } = args;
+    // Verify event exists
+    const event = await ctx.db.get(args.eventId);
+    if (!event) {
+      throw new Error("Event not found");
+    }
+
+    // Verify event type exists (if provided)
+    if (args.eventTypeId) {
+      const eventType = await ctx.db.get(args.eventTypeId);
+      if (!eventType) {
+        throw new Error("Event type not found");
+      }
+    }
+
+    // Verify server exists (if provided)
+    if (args.serverId) {
+      const server = await ctx.db.get(args.serverId);
+      if (!server) {
+        throw new Error("Server not found");
+      }
+    }
+
+    // Handle instructor updates separately if provided
+    if (args.instructorIds !== undefined) {
+      // Verify all instructors exist and have appropriate roles
+      for (const instructorId of args.instructorIds) {
+        const instructor = await ctx.db.get(instructorId);
+        if (!instructor) {
+          throw new Error("Instructor not found");
+        }
+
+        // Check if personnel has instructor or game_master role
+        const userRoles = await ctx.db
+          .query("userRoles")
+          .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
+          .collect();
+
+        const roles = await ctx.db.query("roles").collect();
+        const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+        
+        const hasInstructorRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "instructor");
+        const hasGameMasterRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "game_master");
+
+        if (!hasInstructorRole && !hasGameMasterRole) {
+          throw new Error("Personnel must be an instructor or game master");
+        }
+      }
+
+      // Delete existing event instructors
+      const existingInstructors = await ctx.db
+        .query("eventInstructors")
+        .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
+        .collect();
+
+      for (const instructor of existingInstructors) {
+        await ctx.db.delete(instructor._id);
+      }
+
+      // Create new event instructor assignments
+      for (const instructorId of args.instructorIds) {
+        // Determine role based on personnel roles
+        const userRoles = await ctx.db
+          .query("userRoles")
+          .withIndex("by_personnel", (q) => q.eq("personnelId", instructorId))
+          .collect();
+
+        const roles = await ctx.db.query("roles").collect();
+        const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+        
+        const hasInstructorRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "instructor");
+        const hasGameMasterRole = userRoles.some(ur => ur.roleId && roleMap.get(ur.roleId) === "game_master");
+
+        // Assign the primary role (prefer game_master if both exist)
+        const role = hasGameMasterRole ? "game_master" : "instructor";
+
+        await ctx.db.insert("eventInstructors", {
+          eventId: args.eventId,
+          personnelId: instructorId,
+          role,
+        });
+      }
+    }
+
+    // Prepare updates for the event itself (exclude instructorIds)
+    const { eventId, instructorIds, ...updates } = args;
 
     // Remove undefined values
     const cleanUpdates = Object.fromEntries(
       Object.entries(updates).filter(([_, v]) => v !== undefined)
     );
 
-    await ctx.db.patch(eventId, cleanUpdates);
+    // Only patch if there are updates
+    if (Object.keys(cleanUpdates).length > 0) {
+      await ctx.db.patch(eventId, cleanUpdates);
+    }
+
     return { success: true };
   },
 });

@@ -1,4 +1,4 @@
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireAuth } from "./helpers";
 import { Doc } from "./_generated/dataModel";
@@ -121,19 +121,15 @@ export const getDashboardOverview = query({
         timestamp: new Date().toISOString()
       });
       
-      // Provide more specific error messages
-      if (errorMessage.includes("not found")) {
-        throw new Error("User account not found. Please contact an administrator or try logging in again.");
-      } else if (errorMessage.includes("system access")) {
-        throw new Error("Your account does not have system access. Please contact an administrator.");
-      } else if (errorMessage.includes("inactive")) {
-        throw new Error("Your account is inactive. Please contact an administrator.");
-      } else if (errorMessage.includes("Authentication required")) {
-        throw new Error("Authentication failed. Please log in again.");
+      if (error instanceof ConvexError) {
+        throw error;
       }
-      
-      // Re-throw with original message if it's already descriptive
-      throw error;
+
+      throw new ConvexError({
+        code: "AUTH_UNKNOWN",
+        message: "Authentication failed. Please log in again.",
+        shouldLogout: true,
+      });
     }
 
     // Get basic statistics with error handling

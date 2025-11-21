@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { QueryCtx, MutationCtx } from "./_generated/server";
 import { Id, Doc } from "./_generated/dataModel";
 
@@ -11,6 +12,24 @@ const roleHierarchy: Record<UserRole, number> = {
   game_master: 2,
   member: 1,
 };
+
+type AuthErrorPayload = {
+  code: string;
+  message: string;
+  shouldLogout: boolean;
+};
+
+function createAuthError(
+  code: string,
+  message: string,
+  { shouldLogout = true }: { shouldLogout?: boolean } = {}
+): ConvexError<AuthErrorPayload> {
+  return new ConvexError({
+    code,
+    message,
+    shouldLogout,
+  });
+}
 
 /**
  * Get a personnel member by their ID
@@ -28,35 +47,48 @@ export async function getAuthenticatedUser(
   ctx: QueryCtx | MutationCtx,
   userId: Id<"personnel"> | string
 ): Promise<Doc<"personnel">> {
-  // Validate userId format
   if (!userId) {
-    throw new Error("Authentication required: userId must be provided");
+    throw createAuthError(
+      "AUTH_MISSING_USER_ID",
+      "Authentication required. Please log in again."
+    );
   }
 
   try {
     const user = await ctx.db.get(userId as Id<"personnel">);
-    
+
     if (!user) {
-      throw new Error(`User not found with ID: ${userId}`);
+      throw createAuthError(
+        "AUTH_USER_NOT_FOUND",
+        "User account not found. Please log in again."
+      );
     }
-    
-    // Verify user has system access (passwordHash exists)
+
     if (!user.passwordHash) {
-      throw new Error("User does not have system access");
+      throw createAuthError(
+        "AUTH_NO_SYSTEM_ACCESS",
+        "Your account no longer has system access. Please contact an administrator."
+      );
     }
-    
-    // Verify user is active
+
     if (user.isActive === false) {
-      throw new Error("User account is inactive");
+      throw createAuthError(
+        "AUTH_INACTIVE",
+        "Your account has been deactivated. Please contact an administrator.",
+        { shouldLogout: true }
+      );
     }
-    
+
     return user;
   } catch (error) {
-    // Re-throw with more context if it's not already an Error
-    if (error instanceof Error) {
+    if (error instanceof ConvexError) {
       throw error;
     }
-    throw new Error(`Authentication failed: ${String(error)}`);
+
+    throw createAuthError(
+      "AUTH_UNKNOWN",
+      "Authentication failed. Please log in again."
+    );
   }
 }
 
@@ -72,9 +104,12 @@ export async function requireAuth(
   userId: Id<"personnel"> | string
 ): Promise<Doc<"personnel">> {
   if (!userId) {
-    throw new Error("Authentication required: userId must be provided");
+    throw createAuthError(
+      "AUTH_MISSING_USER_ID",
+      "Authentication required. Please log in again."
+    );
   }
-  
+
   return await getAuthenticatedUser(ctx, userId);
 }
 

@@ -1756,7 +1756,7 @@ export default function SystemManagementPage() {
                                     emptyMessage="No personnel without system access found."
                                   />
                                   <p className="text-xs text-muted-foreground">
-                                    Select a personnel member who doesn't have a login account yet
+                                    Select a personnel member who doesn&apos;t have a login account yet
                                   </p>
                                 </div>
                               )}

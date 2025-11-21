@@ -29,7 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save } from "lucide-react"
+import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, EyeOff, Copy, Check, KeyRound, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save } from "lucide-react"
 import { PersonnelQualifications } from "@/components/dashboard/personnel-qualifications"
 import { SearchFilterBar, FilterMode, SystemRole } from "@/components/dashboard/search-filter-bar"
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
@@ -39,7 +39,6 @@ import { useToast } from "@/hooks/use-toast"
 import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select"
 import { Textarea } from "@/components/ui/textarea"
 import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
-import { Eye, EyeOff, Copy, Check, KeyRound } from "lucide-react"
 import { Id } from "../../../../convex/_generated/dataModel"
 import { getUserFriendlyError, getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
