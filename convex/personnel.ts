@@ -355,7 +355,7 @@ export const updatePersonnel = mutation({
       throw new Error("Access denied: Requires staff role (instructor, game master, administrator, or super admin)");
     }
 
-    const { personnelId, ...updates } = args;
+    const { personnelId, userId, ...updates } = args;
     
     // Remove undefined values
     const cleanUpdates = Object.fromEntries(
