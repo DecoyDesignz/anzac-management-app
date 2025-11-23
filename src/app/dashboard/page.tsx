@@ -29,6 +29,30 @@ export default function DashboardPage() {
   
   // Handle query errors, especially authentication errors
   useEffect(() => {
+    // Check if dashboardData is an error (Convex returns errors as objects)
+    if (dashboardData && typeof dashboardData === 'object' && 'message' in dashboardData) {
+      const errorMessage = typeof dashboardData.message === 'string' ? dashboardData.message : String(dashboardData.message || "")
+      
+      // Check for validation errors (old systemUsers ID)
+      if (
+        errorMessage.includes("systemUsers") ||
+        errorMessage.includes("does not match the table name") ||
+        errorMessage.includes("ArgumentValidationError") ||
+        errorMessage.includes("SESSION_EXPIRED") ||
+        errorMessage.includes("Your session is from an older version") ||
+        errorMessage.includes("Your session is invalid")
+      ) {
+        console.error("Session expired or invalid - forcing logout...")
+        
+        // Sign out and redirect to login
+        signOut({ 
+          callbackUrl: "/login?error=session_expired",
+          redirect: true 
+        })
+        return
+      }
+    }
+
     // Listen for unhandled errors from Convex queries
     const handleError = (event: ErrorEvent) => {
       const errorMessage = event.message || ""
@@ -36,10 +60,15 @@ export default function DashboardPage() {
       // Check if this is an authentication-related error
       if (
         errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("systemUsers") ||
+        errorMessage.includes("does not match the table name") ||
+        errorMessage.includes("ArgumentValidationError") ||
+        errorMessage.includes("SESSION_EXPIRED") ||
         errorMessage.includes("User account not found") ||
         errorMessage.includes("does not have system access") ||
         errorMessage.includes("account is inactive") ||
-        errorMessage.includes("Authentication failed")
+        errorMessage.includes("Authentication failed") ||
+        errorMessage.includes("Your session is from an older version")
       ) {
         console.error("Authentication error detected, logging out user...")
         
@@ -58,10 +87,15 @@ export default function DashboardPage() {
       
       if (
         errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("systemUsers") ||
+        errorMessage.includes("does not match the table name") ||
+        errorMessage.includes("ArgumentValidationError") ||
+        errorMessage.includes("SESSION_EXPIRED") ||
         errorMessage.includes("User account not found") ||
         errorMessage.includes("does not have system access") ||
         errorMessage.includes("account is inactive") ||
-        errorMessage.includes("Authentication failed")
+        errorMessage.includes("Authentication failed") ||
+        errorMessage.includes("Your session is from an older version")
       ) {
         console.error("Authentication error detected (promise rejection), logging out user...")
         event.preventDefault()
@@ -80,7 +114,7 @@ export default function DashboardPage() {
       window.removeEventListener("error", handleError)
       window.removeEventListener("unhandledrejection", handleUnhandledRejection)
     }
-  }, [])
+  }, [dashboardData])
   const weekSchedule = useQuery(
     api.events.getWeekSchedule,
     isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"

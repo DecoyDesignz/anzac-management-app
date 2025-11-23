@@ -1,18 +1,86 @@
 import { ConvexError, v } from "convex/values";
 import { query } from "./_generated/server";
 import { requireAuth } from "./helpers";
-import { Doc } from "./_generated/dataModel";
+import { Doc, Id } from "./_generated/dataModel";
+
+/**
+ * Resolve userId to personnel ID - handles migration from systemUsers to personnel
+ * Returns personnel ID if valid, throws error if invalid or from old systemUsers table
+ */
+async function resolveUserIdToPersonnel(
+  ctx: any,
+  userId: string
+): Promise<Id<"personnel">> {
+  // Try to use as personnel ID
+  // Note: Convex will validate the ID type when we use it with ctx.db.get()
+  // If the ID is from systemUsers table, it will throw an error
+  try {
+    // Cast to personnel ID type - Convex will validate this when we use it
+    const personnelId = userId as Id<"personnel">;
+    
+    // Try to get the record - this will throw if the ID is from wrong table
+    const person = await ctx.db.get(personnelId);
+    
+    if (!person) {
+      throw new ConvexError({
+        code: "AUTH_USER_NOT_FOUND",
+        message: "User account not found. Please log in again.",
+        shouldLogout: true,
+      });
+    }
+    
+    return personnelId;
+  } catch (error) {
+    // If it's already a ConvexError, re-throw it
+    if (error instanceof ConvexError) {
+      throw error;
+    }
+    
+    // Check if this is an ArgumentValidationError (ID from wrong table)
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (
+      errorMessage.includes("systemUsers") ||
+      errorMessage.includes("does not match the table name") ||
+      errorMessage.includes("ArgumentValidationError")
+    ) {
+      throw new ConvexError({
+        code: "SESSION_EXPIRED",
+        message: "Your session is from an older version. Please log in again.",
+        shouldLogout: true,
+      });
+    }
+    
+    // Unknown error - treat as invalid session
+    throw new ConvexError({
+      code: "SESSION_EXPIRED",
+      message: "Your session is invalid. Please log in again.",
+      shouldLogout: true,
+    });
+  }
+}
 
 /**
  * Get dashboard statistics
  */
 export const getStatistics = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // Accept string to handle both old systemUsers IDs and personnel IDs during migration
   },
   handler: async (ctx, args) => {
+    // Resolve userId to personnel ID (handles migration from systemUsers)
+    let personnelId: Id<"personnel">;
     try {
-      await requireAuth(ctx, args.userId);
+      personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    } catch (error) {
+      console.error("UserId resolution error in getStatistics:", {
+        userId: args.userId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+
+    try {
+      await requireAuth(ctx, personnelId);
     } catch (error) {
       console.error("Auth error in getStatistics:", error);
       throw error;
@@ -107,16 +175,39 @@ export const getStatistics = query({
  */
 export const getDashboardOverview = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // Accept string to handle both old systemUsers IDs and personnel IDs during migration
   },
   handler: async (ctx, args) => {
+    // Resolve userId to personnel ID (handles migration from systemUsers)
+    let personnelId: Id<"personnel">;
+    try {
+      personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error("UserId resolution error in getDashboardOverview:", {
+        userId: args.userId,
+        error: errorMessage,
+        timestamp: new Date().toISOString()
+      });
+      
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+
+      throw new ConvexError({
+        code: "SESSION_EXPIRED",
+        message: "Your session is invalid. Please log in again.",
+        shouldLogout: true,
+      });
+    }
+
     // Validate and authenticate user with detailed error messages
     try {
-      await requireAuth(ctx, args.userId);
+      await requireAuth(ctx, personnelId);
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Auth error in getDashboardOverview:", {
-        userId: args.userId,
+        userId: personnelId,
         error: errorMessage,
         timestamp: new Date().toISOString()
       });
@@ -497,7 +588,7 @@ export const getDashboardOverview = query({
       // Catch any unexpected errors during data assembly
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error("Unexpected error in getDashboardOverview:", {
-        userId: args.userId,
+        userId: personnelId,
         error: errorMessage,
         timestamp: new Date().toISOString()
       });
