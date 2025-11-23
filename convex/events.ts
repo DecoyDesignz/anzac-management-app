@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
-import { requireAuth, requireRole } from "./helpers";
+import { requireAuth, requireRole, resolveUserIdToPersonnel } from "./helpers";
 
 /**
  * List all events within a date range
@@ -772,10 +772,12 @@ export const listServers = query({
  */
 export const getWeekSchedule = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // Accept string to handle both old systemUsers IDs and personnel IDs during migration
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    // Resolve userId to personnel ID (handles migration from systemUsers)
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     // Calculate the start and end of the current week (Sunday to Saturday)
     const now = new Date();
@@ -845,10 +847,12 @@ export const getWeekSchedule = query({
  */
 export const getNextWeekSchedule = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // Accept string to handle both old systemUsers IDs and personnel IDs during migration
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    // Resolve userId to personnel ID (handles migration from systemUsers)
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     // Calculate the start and end of next week (Sunday to Saturday)
     const now = new Date();
@@ -919,10 +923,12 @@ export const getNextWeekSchedule = query({
  */
 export const getNextEvent = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // Accept string to handle both old systemUsers IDs and personnel IDs during migration
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    // Resolve userId to personnel ID (handles migration from systemUsers)
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     const now = Date.now();
     const oneWeekFromNow = now + 7 * 24 * 60 * 60 * 1000;

@@ -428,3 +428,97 @@ export function validatePassword(password: string): { isValid: boolean; errors: 
   return { isValid: errors.length === 0, errors };
 }
 
+/**
+ * Resolve userId to personnel ID - handles migration from systemUsers to personnel
+ * Returns personnel ID if valid, throws error if invalid or from old systemUsers table
+ * This helper can be used in queries that need to handle both old and new session IDs
+ */
+export async function resolveUserIdToPersonnel(
+  ctx: QueryCtx | MutationCtx,
+  userId: string
+): Promise<Id<"personnel">> {
+  if (!userId || typeof userId !== "string") {
+    throw createAuthError(
+      "AUTH_MISSING_USER_ID",
+      "Authentication required. Please log in again."
+    );
+  }
+
+  // Try to use as personnel ID first (most common case)
+  try {
+    const personnelId = userId as Id<"personnel">;
+    const person = await ctx.db.get(personnelId);
+    
+    if (person) {
+      return personnelId;
+    }
+    
+    // Personnel ID is valid format but record not found
+    throw createAuthError(
+      "AUTH_USER_NOT_FOUND",
+      "User account not found. Please log in again."
+    );
+  } catch (error) {
+    // Check if this is an ArgumentValidationError (ID from wrong table - systemUsers)
+    // We need to check this BEFORE re-throwing ConvexErrors, as ArgumentValidationError may be a ConvexError
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const isSystemUsersError = 
+      errorMessage.includes("systemUsers") ||
+      errorMessage.includes("does not match the table name") ||
+      errorMessage.includes("ArgumentValidationError");
+    
+    if (isSystemUsersError) {
+      // This ID is from systemUsers table - try to find corresponding personnel
+      try {
+        const systemUserId = userId as Id<"systemUsers">;
+        const systemUser = await ctx.db.get(systemUserId);
+        
+        if (systemUser) {
+          // Try to find corresponding personnel record by matching name (callSign) or email
+          let matchingPersonnel = await ctx.db
+            .query("personnel")
+            .withIndex("by_callsign", (q) => q.eq("callSign", systemUser.name))
+            .first();
+          
+          if (!matchingPersonnel && systemUser.email) {
+            matchingPersonnel = await ctx.db
+              .query("personnel")
+              .withIndex("by_email", (q) => q.eq("email", systemUser.email))
+              .first();
+          }
+          
+          if (matchingPersonnel) {
+            return matchingPersonnel._id;
+          }
+        }
+        
+        // No matching personnel found - user needs to log in again after migration
+        throw createAuthError(
+          "SESSION_EXPIRED",
+          "Your session is from an older version. Please log in again."
+        );
+      } catch (lookupError) {
+        // If lookup also fails, return the original migration error
+        if (lookupError instanceof ConvexError) {
+          throw lookupError;
+        }
+        throw createAuthError(
+          "SESSION_EXPIRED",
+          "Your session is from an older version. Please log in again."
+        );
+      }
+    }
+    
+    // If it's a ConvexError that we didn't handle above, re-throw it
+    if (error instanceof ConvexError) {
+      throw error;
+    }
+    
+    // Unknown error - treat as invalid session
+    throw createAuthError(
+      "SESSION_EXPIRED",
+      "Your session is invalid. Please log in again."
+    );
+  }
+}
+

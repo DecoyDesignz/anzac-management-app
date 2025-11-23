@@ -1,63 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { query } from "./_generated/server";
-import { requireAuth } from "./helpers";
+import { requireAuth, resolveUserIdToPersonnel } from "./helpers";
 import { Doc, Id } from "./_generated/dataModel";
-
-/**
- * Resolve userId to personnel ID - handles migration from systemUsers to personnel
- * Returns personnel ID if valid, throws error if invalid or from old systemUsers table
- */
-async function resolveUserIdToPersonnel(
-  ctx: any,
-  userId: string
-): Promise<Id<"personnel">> {
-  // Try to use as personnel ID
-  // Note: Convex will validate the ID type when we use it with ctx.db.get()
-  // If the ID is from systemUsers table, it will throw an error
-  try {
-    // Cast to personnel ID type - Convex will validate this when we use it
-    const personnelId = userId as Id<"personnel">;
-    
-    // Try to get the record - this will throw if the ID is from wrong table
-    const person = await ctx.db.get(personnelId);
-    
-    if (!person) {
-      throw new ConvexError({
-        code: "AUTH_USER_NOT_FOUND",
-        message: "User account not found. Please log in again.",
-        shouldLogout: true,
-      });
-    }
-    
-    return personnelId;
-  } catch (error) {
-    // If it's already a ConvexError, re-throw it
-    if (error instanceof ConvexError) {
-      throw error;
-    }
-    
-    // Check if this is an ArgumentValidationError (ID from wrong table)
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    if (
-      errorMessage.includes("systemUsers") ||
-      errorMessage.includes("does not match the table name") ||
-      errorMessage.includes("ArgumentValidationError")
-    ) {
-      throw new ConvexError({
-        code: "SESSION_EXPIRED",
-        message: "Your session is from an older version. Please log in again.",
-        shouldLogout: true,
-      });
-    }
-    
-    // Unknown error - treat as invalid session
-    throw new ConvexError({
-      code: "SESSION_EXPIRED",
-      message: "Your session is invalid. Please log in again.",
-      shouldLogout: true,
-    });
-  }
-}
 
 /**
  * Get dashboard statistics

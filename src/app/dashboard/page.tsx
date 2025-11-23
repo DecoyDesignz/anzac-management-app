@@ -24,7 +24,7 @@ export default function DashboardPage() {
   
   const dashboardData = useQuery(
     api.dashboard.getDashboardOverview,
-    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id } : "skip"
   )
   
   // Handle query errors, especially authentication errors
@@ -33,14 +33,18 @@ export default function DashboardPage() {
     if (dashboardData && typeof dashboardData === 'object' && 'message' in dashboardData) {
       const errorMessage = typeof dashboardData.message === 'string' ? dashboardData.message : String(dashboardData.message || "")
       
-      // Check for validation errors (old systemUsers ID)
+      // Check for validation errors (old systemUsers ID) - check all queries
       if (
         errorMessage.includes("systemUsers") ||
         errorMessage.includes("does not match the table name") ||
         errorMessage.includes("ArgumentValidationError") ||
         errorMessage.includes("SESSION_EXPIRED") ||
         errorMessage.includes("Your session is from an older version") ||
-        errorMessage.includes("Your session is invalid")
+        errorMessage.includes("Your session is invalid") ||
+        errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("getWeekSchedule") ||
+        errorMessage.includes("getNextWeekSchedule") ||
+        errorMessage.includes("getNextEvent")
       ) {
         console.error("Session expired or invalid - forcing logout...")
         
@@ -60,6 +64,9 @@ export default function DashboardPage() {
       // Check if this is an authentication-related error
       if (
         errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("getWeekSchedule") ||
+        errorMessage.includes("getNextWeekSchedule") ||
+        errorMessage.includes("getNextEvent") ||
         errorMessage.includes("systemUsers") ||
         errorMessage.includes("does not match the table name") ||
         errorMessage.includes("ArgumentValidationError") ||
@@ -87,6 +94,9 @@ export default function DashboardPage() {
       
       if (
         errorMessage.includes("getDashboardOverview") ||
+        errorMessage.includes("getWeekSchedule") ||
+        errorMessage.includes("getNextWeekSchedule") ||
+        errorMessage.includes("getNextEvent") ||
         errorMessage.includes("systemUsers") ||
         errorMessage.includes("does not match the table name") ||
         errorMessage.includes("ArgumentValidationError") ||
@@ -117,15 +127,15 @@ export default function DashboardPage() {
   }, [dashboardData])
   const weekSchedule = useQuery(
     api.events.getWeekSchedule,
-    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id } : "skip"
   )
   const nextWeekSchedule = useQuery(
     api.events.getNextWeekSchedule,
-    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id } : "skip"
   )
   const nextEvent = useQuery(
     api.events.getNextEvent,
-    isValidSession ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isValidSession ? { userId: session.user.id } : "skip"
   )
 
   if (!dashboardData || !weekSchedule || !nextWeekSchedule) {
