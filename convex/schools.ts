@@ -1,16 +1,17 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireRole, canManageSchool } from "./helpers";
+import { requireAuth, requireRole, canManageSchool, resolveUserIdToPersonnel } from "./helpers";
 
 /**
  * List all schools
  */
 export const listSchools = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // User ID from NextAuth session (can be systemUsers or personnel ID)
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     const schools = await ctx.db.query("schools").collect();
     return schools;
@@ -392,7 +393,7 @@ export const getInstructorAssignmentsByName = query({
  */
 export const listManagedSchools = query({
   args: { 
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // User ID from NextAuth session (can be systemUsers or personnel ID)
     username: v.optional(v.string()), // Deprecated - use userId instead
     role: v.optional(v.union(
       v.literal("super_admin"),
@@ -403,7 +404,8 @@ export const listManagedSchools = query({
     )), // Deprecated - will be determined from userId
   },
   handler: async (ctx, args) => {
-    const requester = await requireAuth(ctx, args.userId);
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    const requester = await requireAuth(ctx, personnelId);
     // Get requester's roles from database
     const personnelRoles = await ctx.db
       .query("userRoles")

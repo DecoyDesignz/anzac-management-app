@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireRole, canManageSchool } from "./helpers";
+import { requireAuth, requireRole, canManageSchool, resolveUserIdToPersonnel } from "./helpers";
 
 /**
  * List all qualifications
@@ -96,11 +96,12 @@ export const getQualificationWithCount = query({
  */
 export const listQualificationsWithCounts = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // User ID from NextAuth session (can be systemUsers or personnel ID)
     schoolId: v.optional(v.id("schools")),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     const qualifications = args.schoolId
       ? await ctx.db

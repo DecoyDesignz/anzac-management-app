@@ -1,16 +1,17 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireRole } from "./helpers";
+import { requireAuth, requireRole, resolveUserIdToPersonnel } from "./helpers";
 
 /**
  * List all ranks ordered by promotion hierarchy
  */
 export const listRanks = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // User ID from NextAuth session (can be systemUsers or personnel ID)
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     const ranks = await ctx.db
       .query("ranks")

@@ -1,6 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { requireAuth, requireRole, canAwardQualification, canManageSchool, isStaffRole, isStaff } from "./helpers";
+import { requireAuth, requireRole, canAwardQualification, canManageSchool, isStaffRole, isStaff, resolveUserIdToPersonnel } from "./helpers";
 
 /**
  * List all personnel
@@ -83,7 +83,7 @@ export const listPersonnelWithoutAccess = query({
  */
 export const listPersonnelWithQualifications = query({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // User ID from NextAuth session (can be systemUsers or personnel ID)
     status: v.optional(
       v.union(
         v.literal("active"),
@@ -94,7 +94,8 @@ export const listPersonnelWithQualifications = query({
     ),
   },
   handler: async (ctx, args) => {
-    await requireAuth(ctx, args.userId);
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    await requireAuth(ctx, personnelId);
 
     const personnel = args.status
       ? await ctx.db
@@ -800,16 +801,23 @@ export const updatePersonnelRoles = mutation({
 /**
  * Update staff notes for a personnel member (Staff only)
  * Staff notes are not visible to the personnel member themselves
+ * All staff members (instructor, game_master, administrator, super_admin) can update staff notes
  */
 export const updateStaffNotes = mutation({
   args: {
-    userId: v.id("personnel"), // User ID from NextAuth session
+    userId: v.string(), // User ID from NextAuth session (can be systemUsers or personnel ID)
     personnelId: v.id("personnel"),
     staffNotes: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Require instructor role or higher (all staff roles)
-    await requireRole(ctx, args.userId, "instructor");
+    // Resolve userId to personnel ID
+    const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
+    
+    // Require any staff role (instructor, game_master, administrator, or super_admin)
+    const isUserStaff = await isStaff(ctx, personnelId);
+    if (!isUserStaff) {
+      throw new Error("Access denied: Requires staff role (instructor, game master, administrator, or super admin)");
+    }
 
     const person = await ctx.db.get(args.personnelId);
     if (!person) {
