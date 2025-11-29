@@ -200,7 +200,7 @@ export default function CalendarPage() {
     }
     
     if (!isValidDate(editForm.date)) {
-      setEditFormError("Date must be within the current month")
+      setEditFormError("Date must be in the current month or later")
       return
     }
     
@@ -315,34 +315,33 @@ export default function CalendarPage() {
     return mondayLocalDate
   }
 
-  // Helper function to get the valid date range for booking (current month only)
+  // Helper function to get the valid date range for booking (current month onwards)
   const getValidDateRange = () => {
     // Get current date in Sydney timezone
     const now = new Date()
     const sydneyToday = now.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' })
     
-    // Create a date object for yesterday at midnight in Sydney timezone to allow today
-    const [year, month, day] = sydneyToday.split('-').map(Number)
+    // Get the start of the current month in Sydney timezone
+    const [year, month] = sydneyToday.split('-').map(Number)
     
-    // Create ISO string for yesterday 00:00 in Sydney timezone (to allow today)
-    const isDST = (month > 10 || month < 4) || (month === 10 && day >= 1) || (month === 4 && day < 1)
+    // Create ISO string for the first day of current month at 00:00 in Sydney timezone
+    // DST in Sydney: Oct-Mar is AEDT (+11), Apr-Sep is AEST (+10)
+    // For the 1st of the month: Oct-Dec and Jan-Mar are DST, Apr-Sep are standard
+    const isDST = month >= 10 || month <= 3
     const offset = isDST ? '+11:00' : '+10:00'
-    const yesterdayISO = `${year}-${String(month).padStart(2, '0')}-${String(day - 1).padStart(2, '0')}T00:00:00${offset}`
-    const yesterdayDate = new Date(yesterdayISO)
+    const monthStartISO = `${year}-${String(month).padStart(2, '0')}-01T00:00:00${offset}`
+    const monthStartDate = new Date(monthStartISO)
     
-    // Calculate the end of current month
-    const currentMonthEnd = new Date(year, month, 0) // Last day of current month
-    
-    return { currentWeekStart: yesterdayDate, nextWeekEnd: currentMonthEnd }
+    return { monthStart: monthStartDate }
   }
 
   const isValidDate = (date: Date | undefined) => {
     if (!date) return false
     
-    const { currentWeekStart, nextWeekEnd } = getValidDateRange()
+    const { monthStart } = getValidDateRange()
     
-    // Allow dates from current week Monday through next week Sunday
-    return date >= currentWeekStart && date <= nextWeekEnd
+    // Allow dates from the start of the current month onwards (no upper bound)
+    return date >= monthStart
   }
 
   const getAvailableInstructors = (eventCategory: "training" | "operation") => {
@@ -392,7 +391,7 @@ export default function CalendarPage() {
     }
     
     if (!isValidDate(eventForm.date)) {
-      setFormError("Date must be within the current month")
+      setFormError("Date must be in the current month or later")
       return
     }
     
@@ -647,7 +646,7 @@ export default function CalendarPage() {
         open={bookingModalOpen}
         onOpenChange={setBookingModalOpen}
         title="Make Booking"
-        description="Create a new training event or operation. Date must be within the current month."
+        description="Create a new training event or operation. Date must be in the current month or later."
         onSubmit={handleCreateEvent}
         submitText="Book Event"
         isSubmitting={isSubmitting}
@@ -702,10 +701,10 @@ export default function CalendarPage() {
                 date={eventForm.date}
                 onDateChange={(date) => setEventForm({ ...eventForm, date })}
                 disabled={(date) => {
-                  const { currentWeekStart, nextWeekEnd } = getValidDateRange()
+                  const { monthStart } = getValidDateRange()
                   
-                  // Disable dates before today or after the end of current month
-                  return date < currentWeekStart || date > nextWeekEnd
+                  // Disable dates before the start of the current month
+                  return date < monthStart
                 }}
                 placeholder="Pick a date"
                 className={cn(
@@ -713,10 +712,10 @@ export default function CalendarPage() {
                 )}
               />
               {eventForm.date && !isValidDate(eventForm.date) && (
-                <p className="text-xs text-red-500 mt-1">Date must be within the current month</p>
+                <p className="text-xs text-red-500 mt-1">Date must be in the current month or later</p>
               )}
               <p className="text-xs text-muted-foreground mt-1">
-                Valid range: Today - End of current month
+                Valid range: Start of current month onwards
               </p>
             </div>
             <FormFieldWrapper label="Start Time" htmlFor="startTime">
@@ -803,7 +802,7 @@ export default function CalendarPage() {
         open={editModalOpen}
         onOpenChange={setEditModalOpen}
         title="Edit Event"
-        description="Update the event details. Date must be within the current month."
+        description="Update the event details. Date must be in the current month or later."
         onSubmit={handleUpdateEvent}
         submitText="Update Event"
         isSubmitting={isSubmitting}
@@ -829,10 +828,10 @@ export default function CalendarPage() {
                 date={editForm.date}
                 onDateChange={(date) => setEditForm({ ...editForm, date })}
                 disabled={(date) => {
-                  const { currentWeekStart, nextWeekEnd } = getValidDateRange()
+                  const { monthStart } = getValidDateRange()
                   
-                  // Disable dates before today or after the end of current month
-                  return date < currentWeekStart || date > nextWeekEnd
+                  // Disable dates before the start of the current month
+                  return date < monthStart
                 }}
                 placeholder="Pick a date"
                 className={cn(
@@ -840,7 +839,7 @@ export default function CalendarPage() {
                 )}
               />
               {editForm.date && !isValidDate(editForm.date) && (
-                <p className="text-xs text-red-500 mt-1">Date must be within the current month</p>
+                <p className="text-xs text-red-500 mt-1">Date must be in the current month or later</p>
               )}
             </div>
             <FormFieldWrapper label="Start Time" htmlFor="edit-startTime">

@@ -198,6 +198,35 @@ export const createEvent = mutation({
       throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
     }
 
+    // Validate that event date is not in a past month
+    // Get current date/time in Sydney timezone
+    const now = Date.now();
+    const currentDate = new Date(now);
+    
+    // Calculate the start of the current month in Sydney timezone
+    const sydneyOffset = 10 * 60 * 60 * 1000; // Base offset (AEST = UTC+10)
+    const sydneyDate = new Date(now + sydneyOffset);
+    
+    // Get first day of current month at 00:00:00 Sydney time
+    const monthStart = new Date(
+      Date.UTC(
+        sydneyDate.getUTCFullYear(),
+        sydneyDate.getUTCMonth(),
+        1,
+        0,
+        0,
+        0,
+        0
+      )
+    );
+    // Convert back to UTC timestamp
+    const monthStartUTC = monthStart.getTime() - sydneyOffset;
+    
+    // Check if event start date is before the start of current month
+    if (args.startDate < monthStartUTC) {
+      throw new Error("Cannot create events in past months. Events must be scheduled for the current month or later.");
+    }
+
     // Verify event type exists (if provided)
     if (args.eventTypeId) {
       const eventType = await ctx.db.get(args.eventTypeId);
@@ -344,6 +373,36 @@ export const updateEvent = mutation({
       
       if (!canUpdateEvent) {
         throw new Error("Access denied: Requires instructor, game master, administrator, or super admin role");
+      }
+
+      // Validate that event date is not in a past month (if startDate is being updated)
+      if (args.startDate !== undefined) {
+        // Get current date/time in Sydney timezone
+        const now = Date.now();
+        
+        // Calculate the start of the current month in Sydney timezone
+        const sydneyOffset = 10 * 60 * 60 * 1000; // Base offset (AEST = UTC+10)
+        const sydneyDate = new Date(now + sydneyOffset);
+        
+        // Get first day of current month at 00:00:00 Sydney time
+        const monthStart = new Date(
+          Date.UTC(
+            sydneyDate.getUTCFullYear(),
+            sydneyDate.getUTCMonth(),
+            1,
+            0,
+            0,
+            0,
+            0
+          )
+        );
+        // Convert back to UTC timestamp
+        const monthStartUTC = monthStart.getTime() - sydneyOffset;
+        
+        // Check if event start date is before the start of current month
+        if (args.startDate < monthStartUTC) {
+          throw new Error("Cannot update events to past months. Events must be scheduled for the current month or later.");
+        }
       }
 
       // Verify event exists
