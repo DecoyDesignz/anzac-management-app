@@ -13,6 +13,7 @@ import { DashboardLoading } from "@/components/dashboard/dashboard-loading"
 import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
 import { Button } from "@/components/ui/button"
+import { formatDateSydney, formatTimeSydney } from "@/lib/formatting"
 
 export default function DashboardPage() {
   const { theme } = useTheme()
@@ -142,13 +143,13 @@ export default function DashboardPage() {
     return <DashboardLoading />
   }
 
-  // Helper function to format date and time in user's local timezone
+  // Helper function to format date and time in Sydney timezone
   const formatDateTime = (timestamp: number) => {
     const date = new Date(timestamp)
     return {
-      date: date.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-      time: date.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', hour12: false }),
-      dayOfWeek: date.toLocaleDateString(undefined, { weekday: 'short' }),
+      date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'Australia/Sydney' }),
+      time: formatTimeSydney(timestamp),
+      dayOfWeek: date.toLocaleDateString('en-US', { weekday: 'short', timeZone: 'Australia/Sydney' }),
     }
   }
 
@@ -160,7 +161,7 @@ export default function DashboardPage() {
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-bold tracking-tight text-primary">Dashboard</h1>
           <Badge variant="outline" className="text-xs hidden sm:flex">
             <Clock className="w-3 h-3 mr-1" />
-            Local Time
+            Sydney Time
           </Badge>
         </div>
       </div>

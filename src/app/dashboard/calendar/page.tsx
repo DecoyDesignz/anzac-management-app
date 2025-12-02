@@ -160,8 +160,9 @@ export default function CalendarPage() {
     const endTime = endTimeStr.replace(':', '')
     
     // Create a date object from the Sydney date string
+    // We create a date at noon to avoid timezone conversion issues when the DatePicker displays it
     const [year, month, day] = sydneyDateStr.split('-').map(Number)
-    const formDate = new Date(year, month - 1, day)
+    const formDate = new Date(year, month - 1, day, 12, 0, 0, 0)
     
     // Extract instructor IDs - use personnelId if available, otherwise fall back to user._id
     const instructorIds = eventData.instructors?.map((inst) => inst.personnelId || inst.user?._id).filter((id): id is Id<"personnel"> => id !== undefined) || []
@@ -215,10 +216,8 @@ export default function CalendarPage() {
     try {
       const eventDate = editForm.date!
       
-      // Create dates in Sydney timezone and convert to UTC
-      const year = eventDate.getFullYear()
-      const month = eventDate.getMonth()
-      const day = eventDate.getDate()
+      // Extract date components treating the selected date as a Sydney calendar date
+      const { year, month, day } = extractSydneyDateComponents(eventDate)
       const startHour = parseInt(editForm.startTime.substring(0, 2))
       const startMinute = parseInt(editForm.startTime.substring(2, 4))
       const endHour = parseInt(editForm.endTime.substring(0, 2))
@@ -267,6 +266,16 @@ export default function CalendarPage() {
   }
 
   // Helper functions
+  
+  // Extract date components from a Date object, treating it as a Sydney calendar date
+  // This is needed because DatePicker returns dates in user's local timezone,
+  // but we want to interpret the selected calendar date as a Sydney date
+  function extractSydneyDateComponents(date: Date): { year: number; month: number; day: number } {
+    // Get the date string in Sydney timezone
+    const sydneyDateStr = date.toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }) // YYYY-MM-DD
+    const [year, month, day] = sydneyDateStr.split('-').map(Number)
+    return { year, month: month - 1, day } // month is 0-indexed for Date constructor
+  }
   
   // Convert Sydney time to UTC timestamp
   function sydneyTimeToUTC(year: number, month: number, day: number, hour: number, minute: number): number {
@@ -324,13 +333,9 @@ export default function CalendarPage() {
     // Get the start of the current month in Sydney timezone
     const [year, month] = sydneyToday.split('-').map(Number)
     
-    // Create ISO string for the first day of current month at 00:00 in Sydney timezone
-    // DST in Sydney: Oct-Mar is AEDT (+11), Apr-Sep is AEST (+10)
-    // For the 1st of the month: Oct-Dec and Jan-Mar are DST, Apr-Sep are standard
-    const isDST = month >= 10 || month <= 3
-    const offset = isDST ? '+11:00' : '+10:00'
-    const monthStartISO = `${year}-${String(month).padStart(2, '0')}-01T00:00:00${offset}`
-    const monthStartDate = new Date(monthStartISO)
+    // Create a date object for the first day of current month at noon
+    // Using noon avoids timezone conversion issues when comparing dates
+    const monthStartDate = new Date(year, month - 1, 1, 12, 0, 0, 0)
     
     return { monthStart: monthStartDate }
   }
@@ -340,8 +345,16 @@ export default function CalendarPage() {
     
     const { monthStart } = getValidDateRange()
     
+    // Extract Sydney date components from both dates for comparison
+    const dateComponents = extractSydneyDateComponents(date)
+    const monthStartComponents = extractSydneyDateComponents(monthStart)
+    
+    // Compare dates by creating simple date objects (year, month, day only)
+    const dateCompare = new Date(dateComponents.year, dateComponents.month, dateComponents.day)
+    const monthStartCompare = new Date(monthStartComponents.year, monthStartComponents.month, monthStartComponents.day)
+    
     // Allow dates from the start of the current month onwards (no upper bound)
-    return date >= monthStart
+    return dateCompare >= monthStartCompare
   }
 
   const getAvailableInstructors = (eventCategory: "training" | "operation") => {
@@ -406,10 +419,8 @@ export default function CalendarPage() {
     try {
       const eventDate = eventForm.date!
       
-      // Create dates in Sydney timezone and convert to UTC
-      const year = eventDate.getFullYear()
-      const month = eventDate.getMonth()
-      const day = eventDate.getDate()
+      // Extract date components treating the selected date as a Sydney calendar date
+      const { year, month, day } = extractSydneyDateComponents(eventDate)
       const startHour = parseInt(eventForm.startTime.substring(0, 2))
       const startMinute = parseInt(eventForm.startTime.substring(2, 4))
       const endHour = parseInt(eventForm.endTime.substring(0, 2))
