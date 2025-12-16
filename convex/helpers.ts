@@ -192,12 +192,8 @@ export async function canAwardQualification(
     return true;
   }
 
-  // Game masters and members cannot award qualifications
-  if (roleNames.includes("game_master") || roleNames.includes("member")) {
-    return false;
-  }
-
-  // For instructors, check if they're assigned to the qualification's school
+  // For instructors (including those who also have game_master role), 
+  // check if they're assigned to the qualification's school
   if (roleNames.includes("instructor")) {
     const qualification = await ctx.db.get(qualificationId);
     if (!qualification) {
@@ -213,6 +209,11 @@ export async function canAwardQualification(
       .first();
 
     return assignment !== null;
+  }
+
+  // Game masters and members (without instructor role) cannot award qualifications
+  if (roleNames.includes("game_master") || roleNames.includes("member")) {
+    return false;
   }
 
   return false;
