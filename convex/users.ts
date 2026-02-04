@@ -1,16 +1,17 @@
 import { v } from "convex/values";
 import { mutation, query, internalQuery, internalMutation } from "./_generated/server";
-import { requireAuth, requireRole, UserRole, generateTemporaryPassword, validatePassword } from "./helpers";
-import { Id, Doc } from "./_generated/dataModel";
+import type { QueryCtx } from "./_generated/server";
+import { requireAuth, requireRole } from "./helpers";
+import type { Id, Doc } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 
 /**
  * Get role by role name
  */
-async function getRoleByName(ctx: any, roleName: string) {
+async function getRoleByName(ctx: QueryCtx, roleName: string) {
   return await ctx.db
     .query("roles")
-    .withIndex("by_role_name", (q: any) => q.eq("roleName", roleName))
+    .withIndex("by_role_name", (q) => q.eq("roleName", roleName))
     .first();
 }
 
@@ -18,7 +19,7 @@ async function getRoleByName(ctx: any, roleName: string) {
  * Get role by role ID
  * Returns null if role doesn't exist
  */
-async function getRoleById(ctx: any, roleId: Id<"roles">) {
+async function getRoleById(ctx: QueryCtx, roleId: Id<"roles">) {
   return await ctx.db.get(roleId) ?? null;
 }
 
@@ -471,7 +472,7 @@ export const updateUser = mutation({
     }
 
     // Update the personnel
-    const updates: any = {};
+    const updates: { callSign?: string } = {};
     if (args.name !== undefined) updates.callSign = args.name;
 
     await ctx.db.patch(args.userId, updates);
@@ -695,16 +696,19 @@ export const setUserPassword = mutation({
     passwordSalt: v.optional(v.string()), // Salt is optional for backward compatibility but should be provided
   },
   handler: async (ctx, args) => {
-    const updateData: any = {
+    const updateData: {
+      passwordHash: string;
+      lastPasswordChange: number;
+      passwordSalt?: string;
+    } = {
       passwordHash: args.passwordHash,
       lastPasswordChange: Date.now(),
     };
-    
-    // Only update salt if provided (for backward compatibility)
+
     if (args.passwordSalt) {
       updateData.passwordSalt = args.passwordSalt;
     }
-    
+
     await ctx.db.patch(args.userId, updateData);
     
     return { success: true };

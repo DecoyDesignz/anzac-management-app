@@ -3,6 +3,57 @@ import { query } from "./_generated/server";
 import { requireAuth, resolveUserIdToPersonnel } from "./helpers";
 import { Doc, Id } from "./_generated/dataModel";
 
+/** Upcoming event with resolved details for dashboard */
+type UpcomingEventWithDetails = {
+  _id: Id<"events">;
+  title: string;
+  startDate: number;
+  endDate: number;
+  eventType: string;
+  eventTypeColor: string;
+  server: string;
+  instructorName: string;
+  currentParticipants: number;
+  maxParticipants: number | undefined;
+};
+
+/** School stat for dashboard */
+type SchoolStat = {
+  name: string;
+  abbreviation: string;
+  qualificationCount: number;
+  instructorCount: number;
+};
+
+/** Recent promotion with resolved details */
+type RecentPromotionWithDetails = {
+  personnelName: string;
+  rankName: string;
+  rankAbbreviation: string;
+  promotionDate: number;
+  promotedByName: string;
+  notes: string | undefined;
+  roles: Array<{ name: string; displayName: string; color: string }>;
+  hasSystemAccess: boolean;
+};
+
+/** Week schedule event with resolved details */
+type WeekScheduleEvent = {
+  _id: Id<"events">;
+  title: string;
+  description: string | undefined;
+  startDate: number;
+  endDate: number;
+  eventType: string;
+  eventTypeAbbr: string;
+  eventTypeColor: string;
+  server: string;
+  instructorName: string;
+  currentParticipants: number;
+  maxParticipants: number | undefined;
+  bookingCode: string;
+};
+
 /**
  * Get dashboard statistics
  */
@@ -261,7 +312,7 @@ export const getDashboardOverview = query({
     };
 
     // Get upcoming events with details (limit to 5 for other uses)
-    let upcomingEventsWithDetails: any[] = [];
+    let upcomingEventsWithDetails: (UpcomingEventWithDetails | null)[] = [];
     try {
       upcomingEventsWithDetails = await Promise.all(
         upcomingEvents.slice(0, 5).map(async (event) => {
@@ -311,13 +362,13 @@ export const getDashboardOverview = query({
     // Get the next event closest to current time
     const nextEvent = upcomingEventsWithDetails.length > 0 
       ? upcomingEventsWithDetails
-          .filter(event => event.startDate >= now)
+          .filter((event): event is UpcomingEventWithDetails => event !== null && event.startDate >= now)
           .sort((a, b) => a.startDate - b.startDate)[0]
       : null;
 
     // Get schools data
     const allSchools = schools; // Reuse schools we already fetched
-    let schoolStats: any[] = [];
+    let schoolStats: (SchoolStat | null)[] = [];
     try {
       schoolStats = await Promise.all(
         allSchools.map(async (school) => {
@@ -349,7 +400,7 @@ export const getDashboardOverview = query({
 
     // Get system users count (personnel with system access)
     const allPersonnelForCount = allPersonnel; // Reuse personnel we already fetched
-    const systemUsers = allPersonnelForCount.filter(p => p.passwordHash !== undefined);
+    const _systemUsers = allPersonnelForCount.filter(p => p.passwordHash !== undefined);
     
     let allUserRoles: Doc<"userRoles">[] = [];
     try {
@@ -383,7 +434,7 @@ export const getDashboardOverview = query({
     }
     const sortedRankHistory = allRankHistory.sort((a, b) => b.promotionDate - a.promotionDate);
     
-    let recentPromotions: any[] = [];
+    let recentPromotions: (RecentPromotionWithDetails | null)[] = [];
     try {
       recentPromotions = await Promise.all(
         sortedRankHistory.slice(0, 3).map(async (history) => {
@@ -450,7 +501,7 @@ export const getDashboardOverview = query({
       (event) => event.startDate >= startOfWeek.getTime() && event.startDate < endOfWeek.getTime() && event.status === "scheduled"
     );
 
-    let weekSchedule: any[] = [];
+    let weekSchedule: (WeekScheduleEvent | null)[] = [];
     try {
       weekSchedule = await Promise.all(
         weekEvents.map(async (event) => {

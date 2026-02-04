@@ -11,7 +11,7 @@ interface GlobalErrorPageProps {
   reset: () => void
 }
 
-export default function GlobalErrorPage({ error, reset }: GlobalErrorPageProps) {
+export default function GlobalErrorPage({ error, reset: _reset }: GlobalErrorPageProps) {
   const [copied, setCopied] = useState(false)
   const [showDetails, setShowDetails] = useState(false)
 

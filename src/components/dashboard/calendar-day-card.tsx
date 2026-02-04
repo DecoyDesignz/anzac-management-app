@@ -28,9 +28,7 @@ export function CalendarDayCard({
   textStyling,
   onClick,
   // These props are in the interface but not used in the component
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   dayNumber: _dayNumber,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   dayOfWeek: _dayOfWeek,
 }: CalendarDayCardProps) {
   return (

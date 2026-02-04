@@ -3,22 +3,18 @@
 import { useQuery } from "convex/react"
 import { useSession, signOut } from "next-auth/react"
 import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 import { api } from "../../../convex/_generated/api"
-import { Id } from "../../../convex/_generated/dataModel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield, AlertTriangle } from "lucide-react"
+import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { DashboardLoading } from "@/components/dashboard/dashboard-loading"
 import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
-import { Button } from "@/components/ui/button"
-import { formatDateSydney, formatTimeSydney } from "@/lib/formatting"
+import { formatTimeSydney } from "@/lib/formatting"
 
 export default function DashboardPage() {
   const { theme } = useTheme()
   const { data: session } = useSession()
-  const router = useRouter()
   const isDarkMode = theme === 'dark'
   // Validate session before making queries
   const isValidSession = session?.user?.id && typeof session.user.id === 'string' && session.user.id.length > 0;
@@ -285,7 +281,7 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               {dashboardData.recentPromotions.length > 0 ? (
-                dashboardData.recentPromotions.map((promotion, index) => {
+                dashboardData.recentPromotions.filter(p => p !== null).map((promotion, index) => {
                   const dateTime = formatDateTime(promotion.promotionDate)
                   return (
                     <div

@@ -1,6 +1,6 @@
 import { mutation, internalMutation, action } from "./_generated/server";
-import { v } from "convex/values";
 import { internal } from "./_generated/api";
+import type { Doc, Id } from "./_generated/dataModel";
 
 /**
  * Migration: Add order field to existing ranks
@@ -103,7 +103,7 @@ export const migrateToRolesTable = mutation({
     ];
 
     // Create roles if they don't exist
-    const createdRoles: Record<string, any> = {};
+    const createdRoles: Record<string, Doc<"roles">> = {};
     for (const roleDef of roleDefinitions) {
       const existingRole = await ctx.db
         .query("roles")
@@ -112,7 +112,10 @@ export const migrateToRolesTable = mutation({
       
       if (!existingRole) {
         const roleId = await ctx.db.insert("roles", roleDef);
-        createdRoles[roleDef.roleName] = { _id: roleId, ...roleDef };
+        const newRole = await ctx.db.get(roleId);
+        if (newRole) {
+          createdRoles[roleDef.roleName] = newRole;
+        }
       } else {
         createdRoles[roleDef.roleName] = existingRole;
       }
@@ -125,49 +128,42 @@ export const migrateToRolesTable = mutation({
     let skippedCount = 0;
     let deletedCount = 0;
 
+    type UserRoleWithLegacyRole = Doc<"userRoles"> & { role?: string };
     for (const userRole of allUserRoles) {
-      const userRoleAny = userRole as any;
-      
+      const ur = userRole as UserRoleWithLegacyRole;
+
       // Check if this has the old structure (has 'role' string field)
-      if ('role' in userRoleAny && typeof userRoleAny.role === 'string') {
-        const roleName = userRoleAny.role as string;
+      if ("role" in ur && typeof ur.role === "string") {
+        const roleName = ur.role;
         const roleDefinition = createdRoles[roleName];
-        
-        if (roleDefinition && userRoleAny.personnelId) {
-          // Delete the old record and create a new one with proper structure
-          await ctx.db.delete(userRoleAny._id);
-          
-          // Check if a proper record already exists
+
+        if (roleDefinition && ur.personnelId) {
+          await ctx.db.delete(ur._id);
           const existingProperRole = await ctx.db
             .query("userRoles")
-            .withIndex("by_personnel_and_role", (q) => 
-              q.eq("personnelId", userRoleAny.personnelId).eq("roleId", roleDefinition._id)
+            .withIndex("by_personnel_and_role", (q) =>
+              q.eq("personnelId", ur.personnelId!).eq("roleId", roleDefinition._id)
             )
             .first();
-          
+
           if (!existingProperRole) {
-            // Create new record with proper structure
             await ctx.db.insert("userRoles", {
-              personnelId: userRoleAny.personnelId,
+              personnelId: ur.personnelId,
               roleId: roleDefinition._id,
             });
           }
-          
           migratedCount++;
-        } else if (!userRoleAny.personnelId) {
-          // Missing personnelId, delete this broken record
-          await ctx.db.delete(userRoleAny._id);
+        } else if (!ur.personnelId) {
+          await ctx.db.delete(ur._id);
           deletedCount++;
         } else {
           console.warn(`Unknown role: ${roleName}`);
           skippedCount++;
         }
-      } else if (!('roleId' in userRoleAny)) {
-        // Has neither 'role' nor 'roleId', delete it
-        await ctx.db.delete(userRoleAny._id);
+      } else if (!("roleId" in ur)) {
+        await ctx.db.delete(ur._id);
         deletedCount++;
       } else {
-        // Already has proper structure
         skippedCount++;
       }
     }
@@ -227,11 +223,11 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
     
     try {
       // Get all existing systemUsers (if table still exists)
-      let systemUsers: any[] = [];
+      let systemUsers: Doc<"systemUsers">[] = [];
       try {
-        systemUsers = await ctx.db.query("systemUsers" as any).collect();
+        systemUsers = await ctx.db.query("systemUsers").collect();
         log.push(`Found ${systemUsers.length} system users to migrate`);
-      } catch (e) {
+      } catch {
         log.push("systemUsers table not found - assuming already migrated or schema updated");
         return { success: true, log, message: "No migration needed" };
       }
@@ -240,14 +236,14 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
       log.push(`Found ${personnel.length} existing personnel records`);
 
       // Map to track systemUser -> personnel ID mapping
-      const userToPersonnelMap = new Map<string, string>();
+      const userToPersonnelMap = new Map<Id<"systemUsers">, Id<"personnel">>();
       let matched = 0;
       let created = 0;
 
       // Process each systemUser
       for (const systemUser of systemUsers) {
         // Try to find matching personnel by callSign or email
-        let matchingPersonnel = personnel.find(
+        const matchingPersonnel = personnel.find(
           (p) => p.callSign === systemUser.name || 
                  (p.email && systemUser.email && p.email === systemUser.email)
         );
@@ -301,7 +297,7 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
           continue;
         }
         
-        const oldUserId = role.userId as any;
+        const oldUserId = role.userId;
         if (!oldUserId) {
           log.push(`Role ${role._id} has no userId, skipping`);
           continue;
@@ -309,10 +305,7 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
         
         const personnelId = userToPersonnelMap.get(oldUserId);
         if (personnelId) {
-          // Update to use personnelId
-          await ctx.db.patch(role._id, {
-            personnelId: personnelId as any,
-          });
+          await ctx.db.patch(role._id, { personnelId });
         }
       }
       log.push("User roles updated");
@@ -327,17 +320,11 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
           continue;
         }
         
-        const oldUserId = assignment.userId as any;
-        if (!oldUserId) {
-          continue;
-        }
-        
+        const oldUserId = assignment.userId;
+        if (!oldUserId) continue;
         const personnelId = userToPersonnelMap.get(oldUserId);
         if (personnelId) {
-          // Update to use personnelId
-          await ctx.db.patch(assignment._id, {
-            personnelId: personnelId as any,
-          });
+          await ctx.db.patch(assignment._id, { personnelId });
         }
       }
       log.push("Instructor schools updated");
@@ -352,17 +339,11 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
           continue;
         }
         
-        const oldUserId = eventInstructor.userId as any;
-        if (!oldUserId) {
-          continue;
-        }
-        
+        const oldUserId = eventInstructor.userId;
+        if (!oldUserId) continue;
         const personnelId = userToPersonnelMap.get(oldUserId);
         if (personnelId) {
-          // Update to use personnelId
-          await ctx.db.patch(eventInstructor._id, {
-            personnelId: personnelId as any,
-          });
+          await ctx.db.patch(eventInstructor._id, { personnelId });
         }
       }
       log.push("Event instructors updated");
@@ -373,11 +354,9 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
       
       for (const event of events) {
         if (event.createdBy) {
-          const personnelId = userToPersonnelMap.get(event.createdBy as any);
+          const personnelId = userToPersonnelMap.get(event.createdBy as unknown as Id<"systemUsers">);
           if (personnelId) {
-            await ctx.db.patch(event._id, {
-              createdBy: personnelId as any,
-            });
+            await ctx.db.patch(event._id, { createdBy: personnelId });
           }
         }
       }
@@ -389,11 +368,9 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
       
       for (const pq of personnelQualifications) {
         if (pq.awardedBy) {
-          const personnelId = userToPersonnelMap.get(pq.awardedBy as any);
+          const personnelId = userToPersonnelMap.get(pq.awardedBy as unknown as Id<"systemUsers">);
           if (personnelId) {
-            await ctx.db.patch(pq._id, {
-              awardedBy: personnelId as any,
-            });
+            await ctx.db.patch(pq._id, { awardedBy: personnelId });
           }
         }
       }
@@ -402,14 +379,12 @@ export const mergeSystemUsersAndPersonnel = internalMutation({
       // Update rankHistory promotedBy field
       const rankHistory = await ctx.db.query("rankHistory").collect();
       log.push(`Updating ${rankHistory.length} rank history records...`);
-      
+
       for (const rh of rankHistory) {
         if (rh.promotedBy) {
-          const personnelId = userToPersonnelMap.get(rh.promotedBy as any);
+          const personnelId = userToPersonnelMap.get(rh.promotedBy as unknown as Id<"systemUsers">);
           if (personnelId) {
-            await ctx.db.patch(rh._id, {
-              promotedBy: personnelId as any,
-            });
+            await ctx.db.patch(rh._id, { promotedBy: personnelId });
           }
         }
       }

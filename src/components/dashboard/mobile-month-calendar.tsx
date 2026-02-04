@@ -21,11 +21,8 @@ export function MobileMonthCalendar({
   getDayStyling,
   getTextStyling,
   // These props are passed but not used in this component
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   events: _events,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onMonthChange: _onMonthChange,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   isToday: _isToday,
 }: MobileMonthCalendarProps) {
   

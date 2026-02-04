@@ -50,7 +50,7 @@ export function PersonnelQualifications({
   }
 
   const personnelQualIds = new Set(
-    personnel.qualifications?.map((q: { _id: Id<"qualifications"> }) => q._id) || []
+    personnel.qualifications?.map((q) => q._id).filter((id): id is Id<"qualifications"> => id !== undefined) || []
   )
 
   // Group qualifications by school - only show qualifications the person actually has
@@ -165,7 +165,7 @@ export function PersonnelQualifications({
                 {isExpanded && (
                   <div className="border-t bg-muted/20 p-3 space-y-2">
                     {qualifications.map(qual => {
-                      const qualData = personnel.qualifications?.find((q: { _id: Id<"qualifications"> }) => q._id === qual._id)
+                      const qualData = personnel.qualifications?.find((q) => q._id === qual._id)
                       
                       return (
                         <div 

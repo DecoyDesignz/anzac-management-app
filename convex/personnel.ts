@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { requireAuth, requireRole, canAwardQualification, canManageSchool, isStaffRole, isStaff, resolveUserIdToPersonnel } from "./helpers";
 
 /**
@@ -96,6 +97,7 @@ export const listPersonnelWithQualifications = query({
   handler: async (ctx, args) => {
     const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
     await requireAuth(ctx, personnelId);
+    const requesterIsStaff = await isStaff(ctx, args.userId);
 
     const personnel = args.status
       ? await ctx.db
@@ -149,6 +151,8 @@ export const listPersonnelWithQualifications = query({
           qualifications: qualifications.filter(q => q !== null),
           roles: roleDetails,
           hasSystemAccess: person.passwordHash !== undefined,
+          hasNotes: !!(person.notes && person.notes.trim()),
+          hasStaffNotes: requesterIsStaff && !!(person.staffNotes && person.staffNotes.trim()),
         };
       })
     );
@@ -228,7 +232,7 @@ export const getPersonnelDetails = query({
     );
 
     // Build result object, conditionally including staffNotes
-    const result: any = {
+    const result = {
       ...person,
       rank,
       qualifications,
@@ -463,18 +467,30 @@ export const awardQualification = mutation({
     );
 
     if (alreadyHas) {
-      throw new Error("Personnel already has this qualification");
+      const personnelName = person.firstName && person.lastName 
+        ? `${person.firstName} ${person.lastName}` 
+        : person.callSign;
+      throw new Error(
+        `${personnelName} already has the ${qualification.name} qualification. ` +
+        `Duplicate qualifications cannot be awarded.`
+      );
     }
 
     // Award the qualification
     // Build the qualification object with only defined fields
-    const qualificationData: any = {
+    const qualificationData: {
+      personnelId: Id<"personnel">;
+      qualificationId: Id<"qualifications">;
+      awardedDate: number;
+      expiryDate?: number;
+      notes?: string;
+      awardedBy?: Id<"personnel">;
+    } = {
       personnelId: args.personnelId,
       qualificationId: args.qualificationId,
       awardedDate: args.awardedDate,
     };
 
-    // Add optional fields only if they have valid values
     if (args.expiryDate) {
       qualificationData.expiryDate = args.expiryDate;
     }

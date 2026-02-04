@@ -29,7 +29,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, EyeOff, Copy, Check, KeyRound, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save } from "lucide-react"
+import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, EyeOff, Copy, Check, KeyRound, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save, StickyNote } from "lucide-react"
 import { PersonnelQualifications } from "@/components/dashboard/personnel-qualifications"
 import { SearchFilterBar, FilterMode, SystemRole } from "@/components/dashboard/search-filter-bar"
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
@@ -58,6 +58,8 @@ type PersonnelWithQualifications = {
   qualifications?: Array<{ name: string; abbreviation: string }>
   roles?: Array<{ name: string; displayName: string; color: string }>
   hasSystemAccess?: boolean
+  hasNotes?: boolean
+  hasStaffNotes?: boolean
 }
 
 export default function PersonnelPage() {
@@ -571,8 +573,9 @@ export default function PersonnelPage() {
 
   // Sync staff notes from personnelDetails when it loads
   useEffect(() => {
-    if (personnelDetails && personnelDetails.staffNotes !== undefined) {
-      setStaffNotes(personnelDetails.staffNotes || "")
+    if (personnelDetails && "staffNotes" in personnelDetails) {
+      const notes = (personnelDetails as { staffNotes?: string }).staffNotes
+      setStaffNotes(notes || "")
       setIsEditingStaffNotes(false)
     }
   }, [personnelDetails])
@@ -755,12 +758,20 @@ export default function PersonnelPage() {
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
-                            <CardTitle className="text-lg truncate">
-                              {person.rank?.abbreviation && `${person.rank.abbreviation} `}
-                              {person.firstName || person.lastName 
-                                ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
-                                : person.callSign}
-                            </CardTitle>
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="text-lg truncate">
+                                {person.rank?.abbreviation && `${person.rank.abbreviation} `}
+                                {person.firstName || person.lastName 
+                                  ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
+                                  : person.callSign}
+                              </CardTitle>
+                              {(person.hasNotes || person.hasStaffNotes) && (
+                                <StickyNote 
+                                  className="w-4 h-4 shrink-0 text-amber-500/90" 
+                                  aria-label="Has notes on profile"
+                                />
+                              )}
+                            </div>
                             <p className="text-xs text-muted-foreground truncate">
                               {person.callSign}
                             </p>
@@ -832,6 +843,12 @@ export default function PersonnelPage() {
                                   ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
                                   : person.callSign}
                               </h3>
+                              {(person.hasNotes || person.hasStaffNotes) && (
+                                <StickyNote 
+                                  className="w-4 h-4 shrink-0 text-amber-500/90" 
+                                  aria-label="Has notes on profile"
+                                />
+                              )}
                             </div>
                             
                             <p className="text-sm text-muted-foreground mb-2">
@@ -1159,8 +1176,9 @@ export default function PersonnelPage() {
                             onClick={() => {
                               setIsEditingStaffNotes(false)
                               // Reset to original value
-                              if (personnelDetails) {
-                                setStaffNotes(personnelDetails.staffNotes || "")
+                              if (personnelDetails && "staffNotes" in personnelDetails) {
+                                const notes = (personnelDetails as { staffNotes?: string }).staffNotes
+                                setStaffNotes(notes || "")
                               }
                             }}
                             disabled={isSavingStaffNotes}
@@ -1180,8 +1198,8 @@ export default function PersonnelPage() {
                       </div>
                     ) : (
                       <div>
-                        {personnelDetails?.staffNotes ? (
-                          <p className="text-sm whitespace-pre-wrap">{personnelDetails.staffNotes}</p>
+                        {personnelDetails && "staffNotes" in personnelDetails && (personnelDetails as { staffNotes?: string }).staffNotes ? (
+                          <p className="text-sm whitespace-pre-wrap">{(personnelDetails as { staffNotes?: string }).staffNotes}</p>
                         ) : (
                           <p className="text-sm text-muted-foreground italic">No staff notes yet.</p>
                         )}

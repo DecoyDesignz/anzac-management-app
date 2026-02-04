@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { mutation, internalMutation, query, internalQuery } from "./_generated/server";
-import { api, internal } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
+import { mutation, internalMutation, query } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Doc } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 
 // Rate limiting configuration
 const RATE_LIMIT_CONFIG = {
@@ -38,28 +39,23 @@ export const cleanupOldAttempts = internalMutation({
 /**
  * Check if an IP address is rate limited
  */
-async function checkIpRateLimit(ctx: any, ipAddress: string | undefined): Promise<{ limited: boolean; remaining: number }> {
+async function checkIpRateLimit(ctx: MutationCtx, ipAddress: string | undefined): Promise<{ limited: boolean; remaining: number }> {
   if (!ipAddress) {
-    // If no IP, allow (but this shouldn't happen in production)
-    // We still want to track attempts without IP, but not rate limit
     return { limited: false, remaining: RATE_LIMIT_CONFIG.MAX_ATTEMPTS_PER_IP };
   }
 
   const windowStart = Date.now() - RATE_LIMIT_CONFIG.WINDOW_MS;
-  
-  // Query attempts by IP address, then filter by timestamp
-  // Using the by_ip index and filtering by timestamp
+
   const attemptsByIp = await ctx.db
     .query("loginAttempts")
-    .withIndex("by_ip", (q: any) => q.eq("ipAddress", ipAddress))
+    .withIndex("by_ip", (q) => q.eq("ipAddress", ipAddress))
     .collect();
-  
-  // Filter by timestamp to get recent attempts only
+
   const recentAttempts = attemptsByIp.filter(
-    (a: any) => a.timestamp >= windowStart
+    (a: Doc<"loginAttempts">) => a.timestamp >= windowStart
   );
-  
-  const failedAttempts = recentAttempts.filter((a: any) => !a.success);
+
+  const failedAttempts = recentAttempts.filter((a: Doc<"loginAttempts">) => !a.success);
   const attempts = failedAttempts.length;
   
   return {
@@ -72,40 +68,36 @@ async function checkIpRateLimit(ctx: any, ipAddress: string | undefined): Promis
  * Check if a username is rate limited or account is locked
  */
 async function checkUsernameRateLimit(
-  ctx: any, 
+  ctx: MutationCtx,
   username: string
 ): Promise<{ limited: boolean; locked: boolean; remaining: number; lockoutExpires?: number }> {
   const windowStart = Date.now() - RATE_LIMIT_CONFIG.WINDOW_MS;
-  
-  // Query attempts by username and timestamp
+
   const allRecentAttempts = await ctx.db
     .query("loginAttempts")
-    .withIndex("by_username", (q: any) => q.eq("username", username))
+    .withIndex("by_username", (q) => q.eq("username", username))
     .collect();
-  
-  // Filter by timestamp manually
+
   const recentAttempts = allRecentAttempts.filter(
-    (a: any) => a.timestamp >= windowStart
+    (a: Doc<"loginAttempts">) => a.timestamp >= windowStart
   );
-  
-  const failedAttempts = recentAttempts.filter((a: any) => !a.success);
+
+  const failedAttempts = recentAttempts.filter((a: Doc<"loginAttempts">) => !a.success);
   const attempts = failedAttempts.length;
-  
-  // Check for account lockout (longer window)
+
   const lockoutWindowStart = Date.now() - RATE_LIMIT_CONFIG.ACCOUNT_LOCKOUT_DURATION_MS;
-  // Reuse allRecentAttempts and filter by lockout window
   const lockoutAttempts = allRecentAttempts.filter(
-    (a: any) => a.timestamp >= lockoutWindowStart
+    (a: Doc<"loginAttempts">) => a.timestamp >= lockoutWindowStart
   );
-  
-  const lockoutFailedAttempts = lockoutAttempts.filter((a: any) => !a.success);
+
+  const lockoutFailedAttempts = lockoutAttempts.filter((a: Doc<"loginAttempts">) => !a.success);
   const isLocked = lockoutFailedAttempts.length >= RATE_LIMIT_CONFIG.ACCOUNT_LOCKOUT_ATTEMPTS;
-  
-  // Find the oldest failed attempt in the lockout window to calculate expiry
+
   let lockoutExpires: number | undefined;
   if (isLocked && lockoutFailedAttempts.length > 0) {
-    const oldestAttempt = lockoutFailedAttempts.reduce((oldest: any, current: any) =>
-      current.timestamp < oldest.timestamp ? current : oldest
+    const oldestAttempt = lockoutFailedAttempts.reduce(
+      (oldest: Doc<"loginAttempts">, current: Doc<"loginAttempts">) =>
+        current.timestamp < oldest.timestamp ? current : oldest
     );
     lockoutExpires = oldestAttempt.timestamp + RATE_LIMIT_CONFIG.ACCOUNT_LOCKOUT_DURATION_MS;
   }

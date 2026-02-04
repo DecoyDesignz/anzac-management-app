@@ -33,9 +33,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
-import { CheckCircle, Plus, Award, Users } from "lucide-react"
+import { CheckCircle, Plus, Award, Users, StickyNote } from "lucide-react"
 import { useMutation } from "convex/react"
 import { Id } from "../../../convex/_generated/dataModel"
+import { useToast } from "@/hooks/use-toast"
+import { getUserFriendlyError } from "@/lib/utils"
 
 type SchoolData = {
   _id: string
@@ -61,6 +63,7 @@ export function QualificationMatrix({
   compact = false 
 }: QualificationMatrixProps) {
   const { data: session } = useSession()
+  const { toast } = useToast()
   const [selectedPersonnel, setSelectedPersonnel] = useState<string[]>([])
   const [selectedQualification, setSelectedQualification] = useState<string>("")
   const [awardModalOpen, setAwardModalOpen] = useState(false)
@@ -89,22 +92,62 @@ export function QualificationMatrix({
   const handleAwardQualification = async () => {
     if (!selectedQualification || selectedPersonnel.length === 0 || !session?.user?.id) return
 
+    const selectedQual = qualifications?.find(q => q._id === selectedQualification)
+    const successCount = { count: 0 }
+    const errors: string[] = []
+
     try {
-      for (const personnelId of selectedPersonnel) {
-        await awardQualification({
-          userId: session.user.id as Id<"personnel">,
-          personnelId: personnelId as Id<"personnel">,
-          qualificationId: selectedQualification as Id<"qualifications">,
-          awardedDate: Date.now(),
-          notes: `Awarded via qualification matrix`
+      for (const pId of selectedPersonnel) {
+        try {
+          await awardQualification({
+            userId: session.user.id as Id<"personnel">,
+            personnelId: pId as Id<"personnel">,
+            qualificationId: selectedQualification as Id<"qualifications">,
+            awardedDate: Date.now(),
+            notes: `Awarded via qualification matrix`
+          })
+          successCount.count++
+        } catch (err) {
+          // Extract the personnel name from the error or use ID
+          const errorMsg = getUserFriendlyError(err)
+          errors.push(errorMsg)
+        }
+      }
+      
+      // Show success/error messages
+      if (successCount.count > 0) {
+        toast({
+          title: "Qualification Awarded",
+          description: `${selectedQual?.name} awarded to ${successCount.count} personnel.`,
         })
+      }
+      
+      if (errors.length > 0) {
+        // Show first error in detail, count others
+        if (errors.length === 1) {
+          toast({
+            title: "Award Failed",
+            description: errors[0],
+            variant: "destructive",
+          })
+        } else {
+          toast({
+            title: "Some Awards Failed",
+            description: `${errors.length} personnel already have this qualification. ${successCount.count > 0 ? `Successfully awarded to ${successCount.count} others.` : ''}`,
+            variant: "destructive",
+          })
+        }
       }
       
       setAwardModalOpen(false)
       setSelectedPersonnel([])
       setSelectedQualification("")
     } catch (error) {
-      console.error("Failed to award qualification:", error)
+      toast({
+        title: "Error",
+        description: getUserFriendlyError(error),
+        variant: "destructive",
+      })
     }
   }
 
@@ -239,31 +282,47 @@ export function QualificationMatrix({
                 <div>
                   <Label>Select Personnel</Label>
                   <div className="max-h-60 overflow-y-auto border rounded-lg p-2 space-y-2">
-                    {personnelWithQuals.map(person => (
-                      <div key={person._id} className="flex items-center space-x-2">
-                        <Checkbox
-                          id={person._id}
-                          checked={selectedPersonnel.includes(person._id)}
-                          onCheckedChange={(checked: boolean) => {
-                            if (checked) {
-                              setSelectedPersonnel([...selectedPersonnel, person._id])
-                            } else {
-                              setSelectedPersonnel(selectedPersonnel.filter(id => id !== person._id))
-                            }
-                          }}
-                        />
-                        <Label 
-                          htmlFor={person._id}
-                          className="text-sm cursor-pointer"
-                        >
-                          {person.rank?.abbreviation} {person.firstName || person.lastName 
-                            ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
-                            : person.callSign}
-                          {person.callSign && (person.firstName || person.lastName) && ` (${person.callSign})`}
-                        </Label>
-                      </div>
-                    ))}
+                    {personnelWithQuals.map(person => {
+                      // Check if person already has the selected qualification
+                      const alreadyHasQual = !!(selectedQualification && person.qualificationIds.has(selectedQualification as Id<"qualifications">))
+                      
+                      return (
+                        <div key={person._id} className="flex items-center space-x-2">
+                          <Checkbox
+                            id={person._id}
+                            checked={selectedPersonnel.includes(person._id)}
+                            disabled={alreadyHasQual}
+                            onCheckedChange={(checked: boolean) => {
+                              if (checked) {
+                                setSelectedPersonnel([...selectedPersonnel, person._id])
+                              } else {
+                                setSelectedPersonnel(selectedPersonnel.filter(id => id !== person._id))
+                              }
+                            }}
+                          />
+                          <Label 
+                            htmlFor={person._id}
+                            className={`text-sm ${alreadyHasQual ? 'text-muted-foreground line-through cursor-not-allowed' : 'cursor-pointer'}`}
+                          >
+                            {person.rank?.abbreviation} {person.firstName || person.lastName 
+                              ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
+                              : person.callSign}
+                            {person.callSign && (person.firstName || person.lastName) && ` (${person.callSign})`}
+                            {alreadyHasQual && (
+                              <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-medium">
+                                ✓ Already has
+                              </span>
+                            )}
+                          </Label>
+                        </div>
+                      )
+                    })}
                   </div>
+                  {selectedQualification && (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Personnel who already have this qualification are disabled
+                    </p>
+                  )}
                 </div>
               </div>
               <DialogFooter>
@@ -315,10 +374,18 @@ export function QualificationMatrix({
                 >
                   <TableCell className="sticky left-0 bg-background z-10 font-medium">
                     <div>
-                      <div className="font-semibold">
-                        {person.rank?.abbreviation} {person.firstName || person.lastName 
-                          ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
-                          : person.callSign}
+                      <div className="font-semibold flex items-center gap-2">
+                        <span>
+                          {person.rank?.abbreviation} {person.firstName || person.lastName 
+                            ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
+                            : person.callSign}
+                        </span>
+                        {(person.hasNotes || person.hasStaffNotes) && (
+                          <StickyNote 
+                            className="w-4 h-4 shrink-0 text-amber-500/90" 
+                            aria-label="Has notes on profile"
+                          />
+                        )}
                       </div>
                       {person.callSign && (person.firstName || person.lastName) && (
                         <div className="text-xs text-muted-foreground">

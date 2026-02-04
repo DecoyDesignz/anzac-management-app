@@ -22,7 +22,7 @@ import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
 import { EmptyState } from "@/components/common/empty-state"
 import { LoadingState } from "@/components/common/loading-state"
 import { CheckboxList, CheckboxOption } from "@/components/forms/checkbox-list"
-import { SearchableSelect, SearchableSelectOption } from "@/components/ui/searchable-select"
+import { SearchableSelect } from "@/components/ui/searchable-select"
 import { Id } from "../../../../convex/_generated/dataModel"
 import {
   DndContext,
