@@ -39,11 +39,7 @@ function DashboardContent({ children }: { children: React.ReactNode }) {
         isCollapsed ? "lg:pl-20" : "lg:pl-72"
       )}>
         <main className="min-h-screen p-6 lg:p-8">
-          <div className="w-full">
-            <div className="animate-in fade-in slide-in-from-bottom-4 duration-700">
-              {children}
-            </div>
-          </div>
+          <div className="w-full">{children}</div>
         </main>
       </div>
     </div>

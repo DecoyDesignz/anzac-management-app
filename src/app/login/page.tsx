@@ -145,7 +145,7 @@ function LoginForm() {
       <div className="fixed inset-0 gradient-mesh pointer-events-none" aria-hidden="true"></div>
       
       {/* Login Card */}
-      <div className="w-full max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-8 duration-700">
+      <div className="w-full max-w-md relative z-10 animate-in fade-in slide-in-from-bottom-2 duration-300 ease-out">
         <Card variant="depth" className="backdrop-blur-xl border-primary/20 shadow-2xl shadow-primary/20">
           <CardHeader className="space-y-3 text-center pb-6">
             {/* Logo/Icon */}
@@ -211,7 +211,7 @@ function LoginForm() {
                 />
                 
                 {error && (
-                  <div className="glass-subtle border-destructive/30 text-destructive text-sm p-4 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300">
+                  <div className="glass-subtle border-destructive/30 text-destructive text-sm p-4 rounded-lg animate-in fade-in slide-in-from-top-2 duration-300 ease-out">
                     <div className="flex items-center gap-2">
                       <AlertTriangle className="w-4 h-4" />
                       <span>{error}</span>
