@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import { signOut } from "next-auth/react"
+import { AUTH_SESSION_ERROR_QUERY } from "@/lib/auth-session-error"
 
 type AuthErrorData = {
   code: string
@@ -105,7 +106,7 @@ function triggerLogout(reason: string) {
   const reasonSlug = encodeURIComponent(reason?.toLowerCase() || "auth_failed")
 
   signOut({
-    callbackUrl: `/login?error=${reasonSlug}`,
+    callbackUrl: `/dashboard?${AUTH_SESSION_ERROR_QUERY}=${reasonSlug}`,
     redirect: true,
   })
 }

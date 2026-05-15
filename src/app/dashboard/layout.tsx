@@ -2,7 +2,6 @@
 
 import { Sidebar } from "@/components/dashboard/sidebar"
 import { SidebarProvider, useSidebar } from "@/providers/sidebar-provider"
-import { Toaster } from "@/components/ui/toaster"
 import { cn } from "@/lib/utils"
 import { Menu } from "lucide-react"
 
@@ -59,7 +58,6 @@ export default function DashboardLayout({
   return (
     <SidebarProvider>
       <DashboardContent>{children}</DashboardContent>
-      <Toaster />
     </SidebarProvider>
   )
 }

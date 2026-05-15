@@ -15,7 +15,7 @@ export default function LogoutPage() {
   useEffect(() => {
     // Force sign out - this clears the session and cookies
     signOut({ 
-      callbackUrl: "/login?logout=success",
+      callbackUrl: "/dashboard",
       redirect: true 
     }).catch((error) => {
       console.error("Error during logout:", error)
@@ -45,9 +45,9 @@ export default function LogoutPage() {
         }
       }
       
-      // Redirect to login after a short delay
+      // Redirect to public dashboard after a short delay
       setTimeout(() => {
-        router.push("/login?logout=success")
+        router.push("/dashboard")
         router.refresh()
       }, 500)
     })

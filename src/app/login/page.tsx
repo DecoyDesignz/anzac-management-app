@@ -23,7 +23,13 @@ import {
   FormMessage,
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
-import { Shield, Lock, AlertTriangle, Info, Loader2 } from "lucide-react"
+import { Shield, Lock, AlertTriangle, Info, Loader2, LayoutDashboard } from "lucide-react"
+import Link from "next/link"
+import { useToast } from "@/hooks/use-toast"
+import {
+  AUTH_SESSION_ERROR_QUERY,
+  getAuthErrorToastContent,
+} from "@/lib/auth-session-error"
 
 const formSchema = z.object({
   username: z.string().min(3, {
@@ -37,11 +43,32 @@ const formSchema = z.object({
 function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { toast } = useToast()
   const { data: session, status } = useSession()
   const callbackUrl = searchParams.get("callbackUrl") || "/dashboard"
   
   const [error, setError] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
+
+  useEffect(() => {
+    const authError =
+      searchParams.get(AUTH_SESSION_ERROR_QUERY) || searchParams.get("error")
+    if (!authError) return
+
+    const { title, description } = getAuthErrorToastContent(authError)
+    toast({
+      title,
+      description,
+      variant: "destructive",
+      duration: 9000,
+    })
+
+    const next = new URLSearchParams(searchParams.toString())
+    next.delete(AUTH_SESSION_ERROR_QUERY)
+    next.delete("error")
+    const qs = next.toString()
+    router.replace(qs ? `/login?${qs}` : "/login", { scroll: false })
+  }, [searchParams, router, toast])
 
   // Initialize form hook early to avoid conditional hook usage
   const form = useForm<z.infer<typeof formSchema>>({
@@ -137,6 +164,13 @@ function LoginForm() {
           </CardHeader>
           
           <CardContent className="space-y-6">
+            <Button variant="outline" className="w-full gap-2" asChild>
+              <Link href="/dashboard">
+                <LayoutDashboard className="w-4 h-4" />
+                Back to dashboard
+              </Link>
+            </Button>
+
             <Form {...form}>
               <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
                 <FormField

@@ -4,6 +4,7 @@ import { Montserrat, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ConvexClientProvider } from "@/providers/convex-provider";
 import { ThemeProvider } from "@/providers/theme-provider";
+import { Toaster } from "@/components/ui/toaster";
 
 const montserrat = Montserrat({
   variable: "--font-montserrat",
@@ -34,7 +35,10 @@ export default function RootLayout({
         className={`${montserrat.variable} ${geistMono.variable} antialiased`}
       >
         <ThemeProvider>
-          <ConvexClientProvider>{children}</ConvexClientProvider>
+          <ConvexClientProvider>
+            {children}
+            <Toaster />
+          </ConvexClientProvider>
         </ThemeProvider>
       </body>
     </html>

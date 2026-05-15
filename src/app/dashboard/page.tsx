@@ -3,6 +3,7 @@
 import { useQuery } from "convex/react"
 import { useSession, signOut } from "next-auth/react"
 import { useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { api } from "../../../convex/_generated/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Users, GraduationCap, Gamepad2, TrendingUp, Calendar, Clock, Shield } from "lucide-react"
@@ -12,9 +13,16 @@ import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
 import { formatTimeSydney } from "@/lib/formatting"
 import { useDashboardAccess } from "@/lib/dashboard-access"
+import { useToast } from "@/hooks/use-toast"
+import {
+  AUTH_SESSION_ERROR_QUERY,
+  getAuthErrorToastContent,
+} from "@/lib/auth-session-error"
 
 export default function DashboardPage() {
   const { theme } = useTheme()
+  const router = useRouter()
+  const { toast } = useToast()
   const { data: session } = useSession()
   const { isAuthed, isLoading: sessionLoading } = useDashboardAccess()
   const isDarkMode = theme === 'dark'
@@ -29,6 +37,21 @@ export default function DashboardPage() {
     !sessionLoading && !isValidSession ? {} : "skip"
   )
   const dashboardData = isValidSession ? dashboardDataAuth : dashboardDataPublic
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const code = params.get(AUTH_SESSION_ERROR_QUERY)
+    if (!code) return
+    const { title, description } = getAuthErrorToastContent(code)
+    toast({
+      title,
+      description,
+      variant: "destructive",
+      duration: 9000,
+    })
+    router.replace("/dashboard", { scroll: false })
+  }, [router, toast])
   
   // Handle query errors, especially authentication errors
   useEffect(() => {
@@ -52,10 +75,9 @@ export default function DashboardPage() {
       ) {
         console.error("Session expired or invalid - forcing logout...")
         
-        // Sign out and redirect to login
-        signOut({ 
-          callbackUrl: "/login?error=session_expired",
-          redirect: true 
+        signOut({
+          callbackUrl: `/dashboard?${AUTH_SESSION_ERROR_QUERY}=session_expired`,
+          redirect: true,
         })
         return
       }
@@ -83,10 +105,9 @@ export default function DashboardPage() {
       ) {
         console.error("Authentication error detected, logging out user...")
         
-        // Sign out and redirect to login
-        signOut({ 
-          callbackUrl: "/login?error=auth_failed",
-          redirect: true 
+        signOut({
+          callbackUrl: `/dashboard?${AUTH_SESSION_ERROR_QUERY}=auth_failed`,
+          redirect: true,
         })
       }
     }
@@ -114,9 +135,9 @@ export default function DashboardPage() {
         console.error("Authentication error detected (promise rejection), logging out user...")
         event.preventDefault()
         
-        signOut({ 
-          callbackUrl: "/login?error=auth_failed",
-          redirect: true 
+        signOut({
+          callbackUrl: `/dashboard?${AUTH_SESSION_ERROR_QUERY}=auth_failed`,
+          redirect: true,
         })
       }
     }
