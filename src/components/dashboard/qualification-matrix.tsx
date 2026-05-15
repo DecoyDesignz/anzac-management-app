@@ -71,7 +71,13 @@ export function QualificationMatrix({
   // Fetch data
   const personnel = useQuery(
     api.personnel.listPersonnelWithQualifications,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
+    session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          status: "active",
+          rosterScope: "active_roster",
+        }
+      : "skip"
   )
   const qualifications = useQuery(api.qualifications.listQualificationsWithCounts, session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip")
   const schools = useQuery(api.schools.listSchools, session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip")

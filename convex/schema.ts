@@ -53,6 +53,9 @@ const schema = defineSchema({
     dischargeDate: v.optional(v.number()),
     notes: v.optional(v.string()),
     staffNotes: v.optional(v.string()), // Staff-only notes (not visible to the personnel member themselves)
+
+    /** When true, hidden from roster views but record and login eligibility remain until un-archived */
+    archived: v.optional(v.boolean()),
     
     // Login fields (optional - only present if user has system access)
     passwordHash: v.optional(v.string()), // Scrypt password hash

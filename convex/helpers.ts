@@ -71,6 +71,14 @@ export async function getAuthenticatedUser(
       );
     }
 
+    if (user.archived === true) {
+      throw createAuthError(
+        "AUTH_ARCHIVED",
+        "Your personnel record has been archived. Contact unit staff if you should have access.",
+        { shouldLogout: true }
+      );
+    }
+
     if (user.isActive === false) {
       throw createAuthError(
         "AUTH_INACTIVE",
@@ -340,6 +348,44 @@ export async function isStaff(
   const roleNames = personnelRoles.map(ur => ur.roleId ? roleMap.get(ur.roleId) : null).filter(Boolean);
 
   return roleNames.some(roleName => roleName && isStaffRole(roleName));
+}
+
+/** Game Master with no Instructor or Administrator-equivalent roles (cannot access archived roster). */
+export async function isPureGameMaster(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"personnel"> | string
+): Promise<boolean> {
+  if (!userId) {
+    return false;
+  }
+
+  const personnelRoles = await ctx.db
+    .query("userRoles")
+    .withIndex("by_personnel", (q) => q.eq("personnelId", userId as Id<"personnel">))
+    .collect();
+
+  const roles = await ctx.db.query("roles").collect();
+  const roleMap = new Map(roles.map(role => [role._id, role.roleName]));
+  const roleNames = personnelRoles
+    .map(ur => (ur.roleId ? roleMap.get(ur.roleId) : null))
+    .filter(Boolean) as string[];
+
+  const hasGameMaster = roleNames.includes("game_master");
+  const hasInstructor = roleNames.includes("instructor");
+  const hasAdmin =
+    roleNames.includes("administrator") || roleNames.includes("super_admin");
+
+  return hasGameMaster && !hasInstructor && !hasAdmin;
+}
+
+/** Instructor, Administrator, Super Admin, or GM+Instructor — not GM-only */
+export async function canViewArchivedPersonnelSection(
+  ctx: QueryCtx | MutationCtx,
+  userId: Id<"personnel"> | string
+): Promise<boolean> {
+  if (!userId) return false;
+  if (!(await isStaff(ctx, userId))) return false;
+  return !(await isPureGameMaster(ctx, userId));
 }
 
 /**

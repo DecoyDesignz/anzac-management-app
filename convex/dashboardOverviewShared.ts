@@ -67,8 +67,9 @@ export async function buildDashboardOverview(ctx: QueryCtx, logCtx?: BuildLogCtx
     console.error("Error fetching personnel:", error);
     allPersonnel = [];
   }
-  const totalPersonnel = allPersonnel.length;
-  const activePersonnel = allPersonnel.filter((p) => p.status === "active").length;
+  const rosterPersonnel = allPersonnel.filter((p) => p.archived !== true);
+  const totalPersonnel = rosterPersonnel.length;
+  const activePersonnel = rosterPersonnel.filter((p) => p.status === "active").length;
 
   let qualifications: Doc<"qualifications">[] = [];
   try {

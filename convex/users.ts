@@ -826,6 +826,9 @@ export const grantSystemAccessInternal = internalMutation({
     if (!person) {
       throw new Error("Personnel not found");
     }
+    if (person.archived === true) {
+      throw new Error("Cannot grant system access to archived personnel.");
+    }
 
     // Check if already has system access
     if (person.passwordHash) {

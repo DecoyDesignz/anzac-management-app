@@ -17,10 +17,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
-import { 
-  Tabs, 
-  TabsContent, 
-} from "@/components/ui/tabs"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { 
   DropdownMenu,
   DropdownMenuContent,
@@ -29,7 +26,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, EyeOff, Copy, Check, KeyRound, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save, StickyNote } from "lucide-react"
+import { Users, Plus, Award, Grid, List, MoreVertical, Edit, Eye, EyeOff, Copy, Check, KeyRound, Trash2, Calendar, TrendingUp, Shield, UserPlus, UserMinus, FileText, Save, StickyNote, Archive, ArchiveRestore } from "lucide-react"
 import { PersonnelQualifications } from "@/components/dashboard/personnel-qualifications"
 import { SearchFilterBar, FilterMode, SystemRole } from "@/components/dashboard/search-filter-bar"
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
@@ -68,6 +65,7 @@ type PersonnelWithQualifications = {
   hasSystemAccess?: boolean
   hasNotes?: boolean
   hasStaffNotes?: boolean
+  archived?: boolean
 }
 
 export default function PersonnelPage() {
@@ -101,7 +99,8 @@ export default function PersonnelPage() {
     qualificationId: string
     qualName: string
   } | null>(null)
-  const [archivePersonnelConfirm, setArchivePersonnelConfirm] = useState<PersonnelWithQualifications | null>(null)
+  const [softArchiveConfirm, setSoftArchiveConfirm] = useState<PersonnelWithQualifications | null>(null)
+  const [deletePersonnelConfirm, setDeletePersonnelConfirm] = useState<PersonnelWithQualifications | null>(null)
   
   // Grant System Access state
   const [grantAccessDialogOpen, setGrantAccessDialogOpen] = useState(false)
@@ -119,6 +118,8 @@ export default function PersonnelPage() {
   
   // Search and filter state
   const [searchTerm, setSearchTerm] = useState("")
+  const [archivedSearchTerm, setArchivedSearchTerm] = useState("")
+  const [rosterTab, setRosterTab] = useState<"active" | "archived">("active")
   const [filterMode, setFilterMode] = useState<FilterMode>("callsign")
   const [selectedRanks, setSelectedRanks] = useState<string[]>([])
   const [selectedRoles, setSelectedRoles] = useState<SystemRole[]>([])
@@ -139,10 +140,26 @@ export default function PersonnelPage() {
     isAdministratorRole ||
     hasInstructorRole ||
     hasGameMasterRole
+  const canViewArchivedSection = isStaff && !isPureGameMaster
 
   const personnelAuth = useQuery(
     api.personnel.listPersonnelWithQualifications,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
+    session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          status: "active",
+          rosterScope: "active_roster",
+        }
+      : "skip"
+  )
+  const archivedPersonnelAuth = useQuery(
+    api.personnel.listPersonnelWithQualifications,
+    session?.user?.id && canViewArchivedSection
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          rosterScope: "archived_only",
+        }
+      : "skip"
   )
   const personnelPublic = useQuery(
     api.personnel.listPersonnelWithQualificationsPublic,
@@ -182,6 +199,8 @@ export default function PersonnelPage() {
   const promotePersonnel = useMutation(api.personnel.promotePersonnel)
   const awardQualification = useMutation(api.personnel.awardQualification)
   const removeQualification = useMutation(api.personnel.removeQualification)
+  const archivePersonnelMut = useMutation(api.personnel.archivePersonnel)
+  const unarchivePersonnelMut = useMutation(api.personnel.unarchivePersonnel)
   const deletePersonnel = useMutation(api.personnel.deletePersonnel)
   const updateStaffNotes = useMutation(api.personnel.updateStaffNotes)
   const grantSystemAccess = useAction(api.userActions.grantSystemAccess)
@@ -295,6 +314,28 @@ export default function PersonnelPage() {
 
     return filtered
   }, [personnel, qualifications, searchTerm, filterMode, selectedRanks, selectedRoles, sortBy, sortOrder])
+
+  const filteredArchivedPersonnel = useMemo(() => {
+    const list =
+      archivedPersonnelAuth?.filter((person) => person.callSign !== "ANZAC Administrator") ??
+      []
+
+    const term = archivedSearchTerm.trim().toLowerCase()
+    if (!term) return list
+
+    return list.filter((person) => {
+      const name =
+        `${person.firstName || ""} ${person.lastName || ""}`.trim().toLowerCase()
+      const rankName = person.rank?.name?.toLowerCase() || ""
+      const rankAbbr = person.rank?.abbreviation?.toLowerCase() || ""
+      return (
+        person.callSign.toLowerCase().includes(term) ||
+        name.includes(term) ||
+        rankName.includes(term) ||
+        rankAbbr.includes(term)
+      )
+    })
+  }, [archivedPersonnelAuth, archivedSearchTerm])
 
   const handleClearFilters = () => {
     setSearchTerm("")
@@ -495,12 +536,42 @@ export default function PersonnelPage() {
     }
   }
 
-  const handleArchivePersonnel = (person: PersonnelWithQualifications) => {
-    setArchivePersonnelConfirm(person)
+  const handlePromptArchivePersonnel = (person: PersonnelWithQualifications) => {
+    setSoftArchiveConfirm(person)
   }
 
-  const confirmArchivePersonnel = async () => {
-    if (!archivePersonnelConfirm) return
+  const handlePromptDeletePersonnelFromSystem = (person: PersonnelWithQualifications) => {
+    setDeletePersonnelConfirm(person)
+  }
+
+  const confirmSoftArchivePersonnel = async () => {
+    if (!softArchiveConfirm) return
+
+    try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await archivePersonnelMut({
+        userId: session.user.id as Id<"personnel">,
+        personnelId: softArchiveConfirm._id as Id<"personnel">,
+      })
+
+      toast({
+        title: "Archived",
+        description: `${softArchiveConfirm.callSign} is hidden from the active roster but their record is saved. Restore them from the Archived section if they return.`,
+      })
+      setSoftArchiveConfirm(null)
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getUserFriendlyError(error),
+        variant: "destructive",
+      })
+    }
+  }
+
+  const confirmPermanentDeletePersonnel = async () => {
+    if (!deletePersonnelConfirm) return
 
     try {
       if (!session?.user?.id) {
@@ -508,12 +579,40 @@ export default function PersonnelPage() {
       }
       await deletePersonnel({
         userId: session.user.id as Id<"personnel">,
-        personnelId: archivePersonnelConfirm._id as Id<"personnel">,
+        personnelId: deletePersonnelConfirm._id as Id<"personnel">,
       })
 
       toast({
-        title: "Personnel Archived",
-        description: `${archivePersonnelConfirm.callSign} has been permanently removed from the system.`,
+        title: "Permanently deleted",
+        description: `${deletePersonnelConfirm.callSign} and their associated data were removed from the system.`,
+      })
+      setDeletePersonnelConfirm(null)
+      if (personnelDetailOpen && selectedPersonnelId === deletePersonnelConfirm._id) {
+        setPersonnelDetailOpen(false)
+        setSelectedPersonnelId(null)
+      }
+    } catch (error: unknown) {
+      toast({
+        title: "Error",
+        description: getUserFriendlyError(error),
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUnarchivePersonnel = async (person: PersonnelWithQualifications) => {
+    try {
+      if (!session?.user?.id) {
+        throw new Error("Session expired. Please log in again.")
+      }
+      await unarchivePersonnelMut({
+        userId: session.user.id as Id<"personnel">,
+        personnelId: person._id as Id<"personnel">,
+      })
+      toast({
+        title: "Restored",
+        variant: "success",
+        description: `${person.callSign} is back on the active roster.`,
       })
     } catch (error: unknown) {
       toast({
@@ -603,9 +702,12 @@ export default function PersonnelPage() {
   }
 
   const selectedPerson = useMemo(() => {
-    if (!selectedPersonnelId || !personnel) return null
-    return personnel.find(p => p._id === selectedPersonnelId)
-  }, [selectedPersonnelId, personnel])
+    if (!selectedPersonnelId) return null
+    const fromActive = personnel?.find((p) => p._id === selectedPersonnelId)
+    if (fromActive) return fromActive
+    const fromArchived = archivedPersonnelAuth?.find((p) => p._id === selectedPersonnelId)
+    return fromArchived ?? null
+  }, [selectedPersonnelId, personnel, archivedPersonnelAuth])
 
   // Check if current user is viewing their own profile (should not see staff notes)
   const isViewingSelf = selectedPerson && session?.user?.name === selectedPerson.callSign
@@ -688,6 +790,12 @@ export default function PersonnelPage() {
     })) || []
   }, [ranks])
 
+  useEffect(() => {
+    if (!canViewArchivedSection && rosterTab === "archived") {
+      setRosterTab("active")
+    }
+  }, [canViewArchivedSection, rosterTab])
+
   return (
     <div className="space-y-6 md:space-y-8 relative pb-8">
       <div className="flex justify-between items-start md:items-center flex-col md:flex-row gap-4 animate-fade-in-down">
@@ -703,27 +811,28 @@ export default function PersonnelPage() {
         </div>
         
         <div className="flex items-center gap-2 flex-wrap w-full md:w-auto">
-          {/* View Mode Toggle */}
-          <div className="flex items-center border rounded-lg p-1">
-            <Button
-              variant={viewMode === "list" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("list")}
-              className="flex items-center gap-2"
-            >
-              <List className="w-4 h-4" />
-              List
-            </Button>
-            <Button
-              variant={viewMode === "matrix" ? "default" : "ghost"}
-              size="sm"
-              onClick={() => setViewMode("matrix")}
-              className="flex items-center gap-2"
-            >
-              <Grid className="w-4 h-4" />
-              Overview
-            </Button>
-          </div>
+          {(!session?.user?.id || !canViewArchivedSection || rosterTab === "active") && (
+            <div className="flex items-center border rounded-lg p-1">
+              <Button
+                variant={viewMode === "list" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("list")}
+                className="flex items-center gap-2"
+              >
+                <List className="w-4 h-4" />
+                List
+              </Button>
+              <Button
+                variant={viewMode === "matrix" ? "default" : "ghost"}
+                size="sm"
+                onClick={() => setViewMode("matrix")}
+                className="flex items-center gap-2"
+              >
+                <Grid className="w-4 h-4" />
+                Overview
+              </Button>
+            </div>
+          )}
           
           {canEditPersonnel && (
             <Button variant="default" size="lg" onClick={handleAddPersonnel}>
@@ -734,30 +843,53 @@ export default function PersonnelPage() {
         </div>
       </div>
 
-      {/* Search and Filter Bar */}
-      <div className="animate-fade-in opacity-0 animate-delay-100">
-        <SearchFilterBar
-        userId={session?.user?.id as Id<"personnel"> | null}
-        searchTerm={searchTerm}
-        onSearchChange={setSearchTerm}
-        filterMode={filterMode}
-        onFilterModeChange={setFilterMode}
-        selectedRanks={selectedRanks}
-        onRanksChange={setSelectedRanks}
-        selectedSchools={undefined}
-        onSchoolsChange={undefined}
-        selectedRoles={selectedRoles}
-        onRolesChange={setSelectedRoles}
-        sortBy={sortBy}
-        onSortByChange={setSortBy}
-        sortOrder={sortOrder}
-        onSortOrderChange={setSortOrder}
-        onClearFilters={handleClearFilters}
-      />
-      </div>
+      {session?.user?.id ? (
+        <Tabs
+          value={canViewArchivedSection ? rosterTab : "active"}
+          onValueChange={(v: string) => {
+            if (!canViewArchivedSection) return
+            setRosterTab(v as "active" | "archived")
+          }}
+          className="animate-fade-in opacity-0 animate-delay-75 space-y-6"
+        >
+          {canViewArchivedSection ? (
+          <TabsList className="h-auto flex-wrap justify-start gap-1 bg-muted/50 p-1 max-w-full">
+            <TabsTrigger value="active" className="gap-1.5 px-4">
+              <Users className="w-4 h-4 shrink-0" />
+              Active roster
+            </TabsTrigger>
+            <TabsTrigger value="archived" className="gap-1.5 px-4">
+              <Archive className="w-4 h-4 shrink-0" />
+              Archived personnel
+            </TabsTrigger>
+          </TabsList>
+          ) : null}
 
-      {/* Content based on view mode */}
-      <Tabs value={viewMode} onValueChange={(value: string) => setViewMode(value as "list" | "matrix")}>
+          <TabsContent value="active" className="mt-0 space-y-6 focus-visible:outline-none">
+            {/* Search and Filter Bar */}
+            <div className="animate-fade-in opacity-0 animate-delay-100">
+              <SearchFilterBar
+              userId={session?.user?.id as Id<"personnel"> | null}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              filterMode={filterMode}
+              onFilterModeChange={setFilterMode}
+              selectedRanks={selectedRanks}
+              onRanksChange={setSelectedRanks}
+              selectedSchools={undefined}
+              onSchoolsChange={undefined}
+              selectedRoles={selectedRoles}
+              onRolesChange={setSelectedRoles}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+              sortOrder={sortOrder}
+              onSortOrderChange={setSortOrder}
+              onClearFilters={handleClearFilters}
+            />
+            </div>
+
+            {/* Content based on view mode */}
+            <Tabs value={viewMode} onValueChange={(value: string) => setViewMode(value as "list" | "matrix")}>
         <TabsContent value="matrix" className="space-y-6 animate-fade-in-up opacity-0 animate-delay-200">
           <Card variant="depth">
             <CardHeader>
@@ -993,11 +1125,24 @@ export default function PersonnelPage() {
                                     </DropdownMenuItem>
                                   )}
                                   <DropdownMenuItem 
-                                    className="text-destructive"
-                                    onClick={() => handleArchivePersonnel(person)}
+                                    className="text-amber-700 dark:text-amber-500 focus:text-amber-700 dark:focus:text-amber-500"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handlePromptArchivePersonnel(person)
+                                    }}
+                                  >
+                                    <Archive className="w-4 h-4 mr-2" />
+                                    Archive (hide from roster)
+                                  </DropdownMenuItem>
+                                  <DropdownMenuItem 
+                                    className="text-destructive focus:text-destructive"
+                                    onClick={(e) => {
+                                      e.stopPropagation()
+                                      handlePromptDeletePersonnelFromSystem(person)
+                                    }}
                                   >
                                     <Trash2 className="w-4 h-4 mr-2" />
-                                    Archive
+                                    Delete from system
                                   </DropdownMenuItem>
                                 </>
                               )}
@@ -1012,7 +1157,313 @@ export default function PersonnelPage() {
             </CardContent>
           </Card>
         </TabsContent>
-      </Tabs>
+            </Tabs>
+          </TabsContent>
+
+          {canViewArchivedSection ? (
+            <TabsContent value="archived" className="mt-6 space-y-6 focus-visible:outline-none">
+              <Card variant="depth">
+                <CardHeader>
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 rounded-lg bg-muted">
+                      <Archive className="w-6 h-6 text-muted-foreground" />
+                    </div>
+                    <div>
+                      <CardTitle className="text-xl text-primary">Archived personnel</CardTitle>
+                      <CardDescription className="mt-1">
+                        Former members kept on file — restore anyone who rejoins. Search by call sign, name, or rank.
+                      </CardDescription>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="archived-personnel-search">Search</Label>
+                    <Input
+                      id="archived-personnel-search"
+                      className="mt-2 max-w-md"
+                      placeholder="Call sign, name, rank..."
+                      value={archivedSearchTerm}
+                      onChange={(e) => setArchivedSearchTerm(e.target.value)}
+                    />
+                  </div>
+                  {!archivedPersonnelAuth ? (
+                    <LoadingState icon={Archive} message="Loading archived personnel..." />
+                  ) : filteredArchivedPersonnel.length === 0 ? (
+                    <EmptyState
+                      icon={Archive}
+                      title={archivedSearchTerm.trim() ? "No matches" : "No archived personnel"}
+                      description={
+                        archivedSearchTerm.trim()
+                          ? "Try a different search term"
+                          : "When someone leaves, administrators can archive them instead of deleting so you can restore their record later."
+                      }
+                    />
+                  ) : (
+                    <div className="space-y-3">
+                      {filteredArchivedPersonnel.map((person) => (
+                        <div
+                          key={person._id}
+                          className="flex flex-wrap items-start justify-between gap-3 rounded-xl border border-border/50 bg-secondary/10 p-4"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="font-semibold">
+                              {person.rank?.abbreviation && `${person.rank.abbreviation}. `}
+                              {person.firstName || person.lastName
+                                ? `${person.firstName ?? ""} ${person.lastName ?? ""}`.trim()
+                                : person.callSign}
+                            </p>
+                            <p className="text-sm text-muted-foreground">{person.callSign}</p>
+                            {(person.rank?.name || person.status) && (
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {[person.rank?.name, person.status].filter(Boolean).join(" · ")}
+                              </p>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handlePersonnelSelect(person._id)}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View
+                            </Button>
+                            <Button
+                              variant="default"
+                              size="sm"
+                              onClick={() => handleUnarchivePersonnel(person)}
+                            >
+                              <ArchiveRestore className="w-4 h-4 mr-2" />
+                              Restore to roster
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </TabsContent>
+          ) : null}
+        </Tabs>
+      ) : (
+        <>
+          <div className="animate-fade-in opacity-0 animate-delay-100">
+            <SearchFilterBar
+              userId={null}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              filterMode={filterMode}
+              onFilterModeChange={setFilterMode}
+              selectedRanks={selectedRanks}
+              onRanksChange={setSelectedRanks}
+              selectedSchools={undefined}
+              onSchoolsChange={undefined}
+              selectedRoles={selectedRoles}
+              onRolesChange={setSelectedRoles}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+              sortOrder={sortOrder}
+              onSortOrderChange={setSortOrder}
+              onClearFilters={handleClearFilters}
+            />
+          </div>
+
+          <Tabs value={viewMode} onValueChange={(value: string) => setViewMode(value as "list" | "matrix")}>
+        <TabsContent value="matrix" className="space-y-6 animate-fade-in-up opacity-0 animate-delay-200">
+          <Card variant="depth">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-primary/20 backdrop-blur-sm">
+                    <Award className="w-6 h-6 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-xl text-primary">
+                      Qualification Overview
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      Compact view of personnel qualifications by school
+                    </CardDescription>
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!personnel ? (
+                <LoadingState icon={Award} message="Loading personnel..." />
+              ) : filteredPersonnel.length === 0 ? (
+                <EmptyState
+                  icon={Award}
+                  title="No personnel to display"
+                  description="Adjust your filters to see more results"
+                />
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {filteredPersonnel.map((person) => (
+                    <Card 
+                      key={person._id}
+                      className="cursor-pointer hover:shadow-lg transition-all duration-300 hover:border-primary/50"
+                      onClick={() => handlePersonnelSelect(person._id)}
+                    >
+                      <CardHeader className="pb-3">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <CardTitle className="text-lg truncate">
+                                {person.rank?.abbreviation && `${person.rank.abbreviation} `}
+                                {person.firstName || person.lastName 
+                                  ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
+                                  : person.callSign}
+                              </CardTitle>
+                              {(person.hasNotes || person.hasStaffNotes) && (
+                                <StickyNote 
+                                  className="w-4 h-4 shrink-0 text-amber-500/90" 
+                                  aria-label="Has notes on profile"
+                                />
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground truncate">
+                              {person.callSign}
+                            </p>
+                          </div>
+                        </div>
+                      </CardHeader>
+                      <CardContent>
+                        <PersonnelQualifications 
+                          personnelId={person._id}
+                          compact={false}
+                          readOnly={!canEditPersonnel}
+                          rosterQualifications={(person as PersonnelWithQualifications).qualifications ?? []}
+                        />
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="list" className="space-y-6">
+          <Card variant="depth" className="animate-fade-in-up opacity-0 animate-delay-200">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-primary/20 backdrop-blur-sm">
+                  <Users className="w-6 h-6 text-primary" />
+                </div>
+                <div>
+                  <CardTitle className="text-xl text-primary">
+                    Personnel List
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    {filteredPersonnel.length} active members of ANZAC 2nd Commandos
+                  </CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {!personnel ? (
+                <LoadingState icon={Users} message="Loading personnel..." />
+              ) : filteredPersonnel.length === 0 ? (
+                <EmptyState
+                  icon={Users}
+                  title={personnel.length === 0 ? "No personnel records found" : "No personnel match your filters"}
+                  description={personnel.length === 0 ? "Add your first member to get started" : "Try adjusting your search or filters"}
+                  action={personnel.length === 0 ? {
+                    label: "Add First Member",
+                    onClick: handleAddPersonnel,
+                    icon: Plus
+                  } : undefined}
+                />
+              ) : (
+                <div className="space-y-3">
+                  {filteredPersonnel.map((person, index) => (
+                    <div
+                      key={person._id}
+                      className="group relative p-4 rounded-xl border border-border/50 bg-secondary/10 hover:border-primary/50 hover:bg-primary/5 transition-all duration-300 animate-in slide-in-from-bottom-2 fade-in cursor-pointer hover:shadow-md"
+                      style={{ animationDelay: `${index * 50}ms` }}
+                      onDoubleClick={() => handlePersonnelSelect(person._id)}
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-4 flex-1 min-w-0">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-1">
+                              <h3 className="font-semibold text-lg text-foreground">
+                                {person.rank?.abbreviation && `${person.rank.abbreviation}. `}
+                                {person.firstName || person.lastName 
+                                  ? `${person.firstName || ''} ${person.lastName || ''}`.trim()
+                                  : person.callSign}
+                              </h3>
+                              {(person.hasNotes || person.hasStaffNotes) && (
+                                <StickyNote 
+                                  className="w-4 h-4 shrink-0 text-amber-500/90" 
+                                  aria-label="Has notes on profile"
+                                />
+                              )}
+                            </div>
+                            
+                            <p className="text-sm text-muted-foreground mb-2">
+                              {person.rank?.name || "No rank assigned"}
+                            </p>
+                            
+                            {person.hasSystemAccess && person.roles && person.roles.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mb-2">
+                                {person.roles.map((role) => {
+                                  const adjustedColor = getThemeAwareColor(role.color, isDarkMode)
+                                  return (
+                                    <Badge 
+                                      key={role.name} 
+                                      className="text-xs flex items-center gap-1"
+                                      style={{
+                                        backgroundColor: adjustedColor,
+                                        color: getTextColor(adjustedColor),
+                                        border: 'none'
+                                      }}
+                                    >
+                                      <Shield className="w-3 h-3" />
+                                      {role.displayName}
+                                    </Badge>
+                                  )
+                                })}
+                              </div>
+                            )}
+                            
+                            <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                              {person.joinDate && (
+                                <div className="flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" />
+                                  <span>Joined {new Date(person.joinDate).toLocaleDateString()}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="flex items-start gap-3">
+                          <div className="text-right space-y-2">
+                            <Badge variant="secondary" className="flex items-center gap-1">
+                              <Award className="w-3 h-3" />
+                              {(person as PersonnelWithQualifications).qualifications?.length || 0} Quals
+                            </Badge>
+                            <p className="text-xs text-muted-foreground capitalize flex items-center gap-1 justify-end">
+                              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+                              {person.status}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+          </Tabs>
+        </>
+      )}
 
       {/* Personnel Detail Modal */}
       <Dialog open={personnelDetailOpen} onOpenChange={(open) => {
@@ -1023,8 +1474,13 @@ export default function PersonnelPage() {
       }}>
         <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
+            <DialogTitle className="flex items-center gap-2 flex-wrap">
               Personnel Details
+              {(selectedPerson as PersonnelWithQualifications).archived ? (
+                <Badge variant="outline" className="font-normal text-muted-foreground">
+                  Archived
+                </Badge>
+              ) : null}
             </DialogTitle>
             <DialogDescription>
               View comprehensive personnel information and qualifications
@@ -1263,6 +1719,28 @@ export default function PersonnelPage() {
                   </CardContent>
                 </Card>
               )}
+
+              {canViewArchivedSection && (selectedPerson as PersonnelWithQualifications).archived ? (
+                <Card className="border-primary/30 bg-primary/5">
+                  <CardContent className="flex flex-wrap gap-4 items-center justify-between py-4">
+                    <div>
+                      <p className="font-medium text-foreground">This member is archived</p>
+                      <p className="text-sm text-muted-foreground">
+                        They cannot sign in until you restore them to the active roster.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        handleUnarchivePersonnel(selectedPerson as PersonnelWithQualifications)
+                      }
+                    >
+                      <ArchiveRestore className="w-4 h-4 mr-2" />
+                      Restore to roster
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : null}
 
               {/* Quick Stats */}
               <div className="grid grid-cols-3 gap-4">
@@ -1609,12 +2087,22 @@ export default function PersonnelPage() {
       />
 
       <ConfirmationDialog
-        open={archivePersonnelConfirm !== null}
-        onOpenChange={(open) => !open && setArchivePersonnelConfirm(null)}
-        title={`Archive ${archivePersonnelConfirm?.callSign}?`}
-        description="This will permanently delete their record and all associated data (qualifications, rank history, etc.). This action cannot be undone."
+        open={softArchiveConfirm !== null}
+        onOpenChange={(open) => !open && setSoftArchiveConfirm(null)}
+        title={`Archive ${softArchiveConfirm?.callSign}?`}
+        description="They will disappear from active lists and cannot sign in until restored. Rank, qualifications, and history stay on file so you can un-archive them later."
         actionText="Archive"
-        onConfirm={confirmArchivePersonnel}
+        variant="default"
+        onConfirm={confirmSoftArchivePersonnel}
+      />
+
+      <ConfirmationDialog
+        open={deletePersonnelConfirm !== null}
+        onOpenChange={(open) => !open && setDeletePersonnelConfirm(null)}
+        title={`Permanently delete ${deletePersonnelConfirm?.callSign}?`}
+        description="This removes their personnel record permanently: qualifications, rank history, notes, and system access links. Prefer Archive if they might return."
+        actionText="Delete permanently"
+        onConfirm={confirmPermanentDeletePersonnel}
       />
     </div>
   )

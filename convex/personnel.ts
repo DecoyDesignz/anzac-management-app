@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import { requireAuth, requireRole, canAwardQualification, canManageSchool, isStaffRole, isStaff, resolveUserIdToPersonnel } from "./helpers";
+import { requireAuth, requireRole, canAwardQualification, canManageSchool, isStaffRole, isStaff, resolveUserIdToPersonnel, canViewArchivedPersonnelSection } from "./helpers";
 
 /**
  * List all personnel
@@ -21,12 +21,14 @@ export const listPersonnel = query({
   handler: async (ctx, args) => {
     await requireAuth(ctx, args.userId);
 
-    const personnel = args.status
+    const personnelRaw = args.status
       ? await ctx.db
           .query("personnel")
           .withIndex("by_status", (q) => q.eq("status", args.status!))
           .collect()
       : await ctx.db.query("personnel").collect();
+
+    const personnel = personnelRaw.filter((p) => p.archived !== true);
     
     // Enrich with rank information
     const personnelWithDetails = await Promise.all(
@@ -56,8 +58,10 @@ export const listPersonnelWithoutAccess = query({
     // Get all personnel
     const allPersonnel = await ctx.db.query("personnel").collect();
     
-    // Filter to only those without system access (no passwordHash)
-    const personnelWithoutAccess = allPersonnel.filter(p => !p.passwordHash);
+    // Filter to only those without system access (no passwordHash); exclude archived roster members
+    const personnelWithoutAccess = allPersonnel.filter(
+      (p) => !p.passwordHash && p.archived !== true
+    );
     
     // Enrich with rank information
     const personnelWithDetails = await Promise.all(
@@ -93,18 +97,34 @@ export const listPersonnelWithQualifications = query({
         v.literal("discharged")
       )
     ),
+    /** Active roster hides archived personnel; archived_only lists only archived rows (restricted). */
+    rosterScope: v.optional(
+      v.union(v.literal("active_roster"), v.literal("archived_only"))
+    ),
   },
   handler: async (ctx, args) => {
     const personnelId = await resolveUserIdToPersonnel(ctx, args.userId);
     await requireAuth(ctx, personnelId);
     const requesterIsStaff = await isStaff(ctx, args.userId);
+    const scope = args.rosterScope ?? "active_roster";
 
-    const personnel = args.status
+    if (scope === "archived_only" && !(await canViewArchivedPersonnelSection(ctx, args.userId))) {
+      throw new Error(
+        "Access denied: Viewing archived personnel requires Instructor or Administrator access (Game Masters-only accounts cannot access this list)"
+      );
+    }
+
+    const personnelRaw = args.status
       ? await ctx.db
           .query("personnel")
           .withIndex("by_status", (q) => q.eq("status", args.status!))
           .collect()
       : await ctx.db.query("personnel").collect();
+
+    const personnel =
+      scope === "archived_only"
+        ? personnelRaw.filter((p) => p.archived === true)
+        : personnelRaw.filter((p) => p.archived !== true);
     
     // Enrich with rank, qualifications, and system roles information
     const personnelWithDetails = await Promise.all(
@@ -174,12 +194,14 @@ export const listPersonnelWithQualificationsPublic = query({
     ),
   },
   handler: async (ctx, args) => {
-    const personnel = args.status
+    const personnelRaw = args.status
       ? await ctx.db
           .query("personnel")
           .withIndex("by_status", (q) => q.eq("status", args.status!))
           .collect()
       : await ctx.db.query("personnel").collect();
+
+    const personnel = personnelRaw.filter((p) => p.archived !== true);
 
     const rolesTable = await ctx.db.query("roles").collect();
     const roleMap = new Map(rolesTable.map((role) => [role._id, role]));
@@ -634,7 +656,75 @@ export const removeQualification = mutation({
 });
 
 /**
- * Delete personnel (Administrator only)
+ * Hide personnel from roster lists — record, qualifications, and rank history are kept (Administrator only).
+ */
+export const archivePersonnel = mutation({
+  args: {
+    userId: v.id("personnel"),
+    personnelId: v.id("personnel"),
+  },
+  handler: async (ctx, args) => {
+    const admin = await requireRole(ctx, args.userId, "administrator");
+    if (admin._id === args.personnelId) {
+      throw new Error("You cannot archive your own personnel record.");
+    }
+
+    const person = await ctx.db.get(args.personnelId);
+    if (!person) {
+      throw new Error("Personnel not found");
+    }
+    const personnelRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.personnelId))
+      .collect();
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map((role) => [role._id, role.roleName]));
+    const hasSuperAdmin = personnelRoles.some(
+      (r) => r.roleId && roleMap.get(r.roleId) === "super_admin"
+    );
+    if (hasSuperAdmin) {
+      throw new Error("Cannot archive personnel with the Super Administrator role.");
+    }
+
+    if (person.archived === true) {
+      return { success: true };
+    }
+    await ctx.db.patch(args.personnelId, { archived: true });
+    return { success: true };
+  },
+});
+
+/**
+ * Return archived personnel to the active roster (Instructor / Administrator; not Game Master-only accounts).
+ */
+export const unarchivePersonnel = mutation({
+  args: {
+    userId: v.id("personnel"),
+    personnelId: v.id("personnel"),
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
+    if (!(await canViewArchivedPersonnelSection(ctx, args.userId))) {
+      throw new Error(
+        "Access denied: Restoring archived personnel requires Instructor or Administrator access."
+      );
+    }
+
+    const person = await ctx.db.get(args.personnelId);
+    if (!person) {
+      throw new Error("Personnel not found");
+    }
+    if (person.archived !== true) {
+      return { success: true };
+    }
+
+    await ctx.db.patch(args.personnelId, { archived: false });
+    return { success: true };
+  },
+});
+
+/**
+ * Permanently delete personnel and associated qualifications and rank history (Administrator only).
  */
 export const deletePersonnel = mutation({
   args: { 
@@ -642,7 +732,27 @@ export const deletePersonnel = mutation({
     personnelId: v.id("personnel") 
   },
   handler: async (ctx, args) => {
-    await requireRole(ctx, args.userId, "administrator");
+    const admin = await requireRole(ctx, args.userId, "administrator");
+    if (admin._id === args.personnelId) {
+      throw new Error("You cannot delete your own personnel record.");
+    }
+
+    const target = await ctx.db.get(args.personnelId);
+    if (!target) {
+      throw new Error("Personnel not found");
+    }
+    const targetRoles = await ctx.db
+      .query("userRoles")
+      .withIndex("by_personnel", (q) => q.eq("personnelId", args.personnelId))
+      .collect();
+    const roles = await ctx.db.query("roles").collect();
+    const roleMap = new Map(roles.map((role) => [role._id, role.roleName]));
+    const hasSuperAdmin = targetRoles.some(
+      (r) => r.roleId && roleMap.get(r.roleId) === "super_admin"
+    );
+    if (hasSuperAdmin) {
+      throw new Error("Cannot permanently delete personnel with the Super Administrator role.");
+    }
 
     // Delete all qualifications
     const qualifications = await ctx.db
@@ -695,6 +805,8 @@ export const listPersonnelWithRoles = query({
           .withIndex("by_status", (q) => q.eq("status", args.status!))
           .collect()
       : await ctx.db.query("personnel").collect();
+
+    personnel = personnel.filter((p) => p.archived !== true);
     
     // Filter to only personnel with system access if requested
     if (args.systemAccessOnly) {
@@ -759,6 +871,9 @@ export const grantSystemAccess = mutation({
     const person = await ctx.db.get(args.personnelId);
     if (!person) {
       throw new Error("Personnel not found");
+    }
+    if (person.archived === true) {
+      throw new Error("Un-archive this personnel on the Personnel page before granting system access.");
     }
 
     // Check if personnel already has system access

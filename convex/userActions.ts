@@ -91,6 +91,21 @@ export const verifyCredentials = action({
 
       personnelId = person._id;
 
+      if (person.archived === true) {
+        failureReason = "Personnel archived";
+        await ctx.runMutation(internal.rateLimiting.recordLoginAttempt, {
+          username: args.username,
+          ipAddress: args.ipAddress,
+          success: false,
+          reason: failureReason,
+          personnelId,
+        });
+        return {
+          success: false,
+          error: "This personnel record has been archived. Contact unit staff to restore roster access.",
+        };
+      }
+
       // Verify password
       if (!person.passwordHash) {
         failureReason = "No password set";
@@ -445,6 +460,10 @@ export const grantSystemAccess = action({
     
     if (!existingPerson) {
       throw new Error("Personnel not found");
+    }
+
+    if (existingPerson.archived === true) {
+      throw new Error("Un-archive this personnel before granting system access.");
     }
     
     // Check if personnel already has system access by checking if they have user roles
