@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { useQuery, useMutation, useAction } from "convex/react"
 import { useSession } from "next-auth/react"
 import { useRouter } from "next/navigation"
@@ -41,7 +41,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { Star, GraduationCap, School, Shield, Users2, Copy, Check, Eye, EyeOff, Pencil, Trash2, GripVertical, KeyRound, Wrench } from "lucide-react"
+import { Star, GraduationCap, School, Shield, Users2, Copy, Check, Eye, EyeOff, Pencil, Trash2, GripVertical, KeyRound, Wrench, Calendar } from "lucide-react"
 import { formatRole, generateTemporaryPassword } from "../../../../convex/helpers"
 import { getRoleColorStyles } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
@@ -207,6 +207,31 @@ export default function SystemManagementPage() {
   const deleteUser = useMutation(api.users.deleteUser)
   const resetUserPassword = useAction(api.userActions.resetUserPassword)
   const setMaintenanceMode = useMutation(api.systemSettings.setMaintenanceMode)
+  const purgeEventsCreatedBeforeMonth = useMutation(api.events.purgeEventsCreatedBeforeMonth)
+
+  const [eventPurgeMonth, setEventPurgeMonth] = useState("")
+  const [eventPurgeDialogOpen, setEventPurgeDialogOpen] = useState(false)
+  const [isPurgingEvents, setIsPurgingEvents] = useState(false)
+
+  const eventPurgeParsed = useMemo(() => {
+    if (!eventPurgeMonth || !/^\d{4}-\d{2}$/.test(eventPurgeMonth)) return null
+    const [yStr, mStr] = eventPurgeMonth.split("-")
+    const year = Number(yStr)
+    const month = Number(mStr)
+    if (!Number.isFinite(year) || month < 1 || month > 12) return null
+    return { year, month }
+  }, [eventPurgeMonth])
+
+  const eventPurgePreview = useQuery(
+    api.events.previewPurgeEventsCreatedBeforeMonth,
+    session?.user?.id && eventPurgeParsed
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          year: eventPurgeParsed.year,
+          month: eventPurgeParsed.month,
+        }
+      : "skip"
+  )
 
   // Dialog states
   const [ranksOpen, setRanksOpen] = useState(false)
@@ -814,6 +839,26 @@ export default function SystemManagementPage() {
   )
   
   // Maintenance mode handlers
+  const handleConfirmEventPurge = async () => {
+    if (!session?.user?.id || !eventPurgeParsed) return
+    setIsPurgingEvents(true)
+    try {
+      const result = await purgeEventsCreatedBeforeMonth({
+        userId: session.user.id as Id<"personnel">,
+        year: eventPurgeParsed.year,
+        month: eventPurgeParsed.month,
+      })
+      alert(
+        `Removed ${result.deletedCount} event${result.deletedCount === 1 ? "" : "s"} (created before ${new Date(result.cutoff).toLocaleString("en-AU", { timeZone: "Australia/Sydney", dateStyle: "medium" })} Sydney).`
+      )
+      setEventPurgeMonth("")
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : "Failed to remove events")
+    } finally {
+      setIsPurgingEvents(false)
+    }
+  }
+
   const handleToggleMaintenance = async (enabled: boolean) => {
     setIsTogglingMaintenance(true)
     try {
@@ -881,7 +926,7 @@ export default function SystemManagementPage() {
           System Management
         </h2>
         <p className="text-muted-foreground text-lg">
-          Manage ranks, qualifications, training schools, and system users
+          Manage ranks, qualifications, training schools, calendar events, and system users
         </p>
       </div>
 
@@ -977,6 +1022,99 @@ export default function SystemManagementPage() {
           </CardContent>
         )}
       </Card>
+
+      <Card variant="depth" className="animate-fade-in opacity-0">
+        <CardHeader>
+          <div className="flex items-center gap-2 mb-2">
+            <Calendar className="w-5 h-5 text-primary" />
+            <CardTitle className="text-primary">Event data management</CardTitle>
+          </div>
+          <CardDescription>
+            Remove calendar events that were first saved in the system before the start of a chosen month (Australia/Sydney), including their participants and instructor links.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid gap-2 max-w-md">
+            <Label htmlFor="event-purge-month">Delete events created before</Label>
+            <Input
+              id="event-purge-month"
+              type="month"
+              value={eventPurgeMonth}
+              onChange={(e) => setEventPurgeMonth(e.target.value)}
+            />
+            <p className="text-xs text-muted-foreground">
+              Only full months before the current Sydney calendar month can be used. The current month and future months are blocked so recent data cannot be wiped by mistake.
+            </p>
+          </div>
+          {eventPurgeParsed && eventPurgePreview && (
+            <div
+              className={
+                eventPurgePreview.ok
+                  ? "rounded-lg border border-border bg-muted/30 p-3 text-sm"
+                  : "rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-sm text-destructive"
+              }
+            >
+              {eventPurgePreview.ok ? (
+                <p>
+                  <span className="font-medium">{eventPurgePreview.count}</span> event
+                  {eventPurgePreview.count === 1 ? "" : "s"} would be permanently removed (system creation time before{" "}
+                  {new Date(eventPurgePreview.cutoff).toLocaleString("en-AU", {
+                    timeZone: "Australia/Sydney",
+                    dateStyle: "long",
+                  })}{" "}
+                  Sydney).
+                  {eventPurgePreview.count === 0 ? (
+                    <span className="mt-2 block text-muted-foreground">
+                      Nothing would be deleted for this month; choose an earlier month or leave the tool unused.
+                    </span>
+                  ) : null}
+                </p>
+              ) : (
+                <p>{eventPurgePreview.message}</p>
+              )}
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={
+                !eventPurgeParsed ||
+                !eventPurgePreview ||
+                !eventPurgePreview.ok ||
+                eventPurgePreview.count === 0 ||
+                isPurgingEvents
+              }
+              onClick={() => setEventPurgeDialogOpen(true)}
+            >
+              Remove matching events
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      <ConfirmationDialog
+        open={eventPurgeDialogOpen}
+        onOpenChange={setEventPurgeDialogOpen}
+        title="Remove historical events?"
+        description={
+          eventPurgePreview && eventPurgePreview.ok ? (
+            <div className="space-y-2 text-left">
+              <p>
+                This will permanently delete{" "}
+                <strong>{eventPurgePreview.count}</strong> event
+                {eventPurgePreview.count === 1 ? "" : "s"} and all related participant and instructor records. This
+                cannot be undone.
+              </p>
+            </div>
+          ) : (
+            "This action cannot be completed for the selected month."
+          )
+        }
+        actionText={isPurgingEvents ? "Removing…" : "Remove events"}
+        disabled={isPurgingEvents || !eventPurgePreview || !eventPurgePreview.ok}
+        onConfirm={handleConfirmEventPurge}
+      />
 
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         {/* Ranks Card */}

@@ -1,7 +1,136 @@
 import { v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import { Id } from "./_generated/dataModel";
 import { requireAuth, requireRole, resolveUserIdToPersonnel } from "./helpers";
+
+/** Sydney calendar (AEST UTC+10) for purge rules — aligned with createEvent / clearOldEvents */
+const SYDNEY_OFFSET_MS = 10 * 60 * 60 * 1000;
+
+function sydneyCalendarYearMonthFromTimestamp(ms: number): { year: number; month: number } {
+  const d = new Date(ms + SYDNEY_OFFSET_MS);
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 };
+}
+
+function startOfSydneyMonthUtc(year: number, month: number): number {
+  const monthStart = new Date(Date.UTC(year, month - 1, 1, 0, 0, 0, 0));
+  return monthStart.getTime() - SYDNEY_OFFSET_MS;
+}
+
+function compareYearMonth(
+  a: { year: number; month: number },
+  b: { year: number; month: number }
+): number {
+  if (a.year !== b.year) return a.year - b.year;
+  return a.month - b.month;
+}
+
+async function deleteEventAndRelations(ctx: MutationCtx, eventId: Id<"events">) {
+  const participants = await ctx.db
+    .query("eventParticipants")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  for (const p of participants) {
+    await ctx.db.delete(p._id);
+  }
+  const eventInstructors = await ctx.db
+    .query("eventInstructors")
+    .withIndex("by_event", (q) => q.eq("eventId", eventId))
+    .collect();
+  for (const ei of eventInstructors) {
+    await ctx.db.delete(ei._id);
+  }
+  await ctx.db.delete(eventId);
+}
+
+/**
+ * Preview how many events would be removed (Convex `_creationTime` before the
+ * first day of the selected month, Sydney time). Only months strictly before
+ * the current Sydney calendar month are allowed.
+ */
+export const previewPurgeEventsCreatedBeforeMonth = query({
+  args: {
+    userId: v.id("personnel"),
+    year: v.number(),
+    month: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, args.userId, "administrator");
+
+    if (args.month < 1 || args.month > 12) {
+      return { ok: false as const, code: "INVALID_MONTH" as const, message: "Month must be between 1 and 12." };
+    }
+
+    const now = Date.now();
+    const currentYm = sydneyCalendarYearMonthFromTimestamp(now);
+    const selectedYm = { year: args.year, month: args.month };
+
+    if (compareYearMonth(selectedYm, currentYm) > 0) {
+      return {
+        ok: false as const,
+        code: "AFTER_CURRENT" as const,
+        message:
+          "The request could not be completed because the selected period falls after the current date.",
+      };
+    }
+    if (compareYearMonth(selectedYm, currentYm) === 0) {
+      return {
+        ok: false as const,
+        code: "CURRENT_MONTH" as const,
+        message:
+          "The request could not be completed because the selected period falls within the current calendar month.",
+      };
+    }
+
+    const cutoff = startOfSydneyMonthUtc(args.year, args.month);
+    const all = await ctx.db.query("events").collect();
+    const count = all.filter((e) => e._creationTime < cutoff).length;
+    return { ok: true as const, cutoff, count };
+  },
+});
+
+/**
+ * Permanently delete events (and participants / instructors) whose Convex
+ * creation time is strictly before the start of the selected calendar month (Sydney).
+ */
+export const purgeEventsCreatedBeforeMonth = mutation({
+  args: {
+    userId: v.id("personnel"),
+    year: v.number(),
+    month: v.number(),
+  },
+  handler: async (ctx, args) => {
+    await requireRole(ctx, args.userId, "administrator");
+
+    if (args.month < 1 || args.month > 12) {
+      throw new Error("Month must be between 1 and 12.");
+    }
+
+    const now = Date.now();
+    const currentYm = sydneyCalendarYearMonthFromTimestamp(now);
+    const selectedYm = { year: args.year, month: args.month };
+
+    if (compareYearMonth(selectedYm, currentYm) > 0) {
+      throw new Error(
+        "The request could not be completed because the selected period falls after the current date."
+      );
+    }
+    if (compareYearMonth(selectedYm, currentYm) === 0) {
+      throw new Error(
+        "The request could not be completed because the selected period falls within the current calendar month."
+      );
+    }
+
+    const cutoff = startOfSydneyMonthUtc(args.year, args.month);
+    const all = await ctx.db.query("events").collect();
+    const toRemove = all.filter((e) => e._creationTime < cutoff);
+
+    for (const event of toRemove) {
+      await deleteEventAndRelations(ctx, event._id);
+    }
+
+    return { deletedCount: toRemove.length, cutoff };
+  },
+});
 
 /**
  * List all events within a date range
@@ -563,28 +692,7 @@ export const deleteEvent = mutation({
   handler: async (ctx, args) => {
     await requireRole(ctx, args.userId, "administrator");
 
-    // Delete all participants
-    const participants = await ctx.db
-      .query("eventParticipants")
-      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
-      .collect();
-
-    for (const participant of participants) {
-      await ctx.db.delete(participant._id);
-    }
-
-    // Delete all event instructors
-    const eventInstructors = await ctx.db
-      .query("eventInstructors")
-      .withIndex("by_event", (q) => q.eq("eventId", args.eventId))
-      .collect();
-
-    for (const instructor of eventInstructors) {
-      await ctx.db.delete(instructor._id);
-    }
-
-    // Delete the event
-    await ctx.db.delete(args.eventId);
+    await deleteEventAndRelations(ctx, args.eventId);
     return { success: true };
   },
 });
