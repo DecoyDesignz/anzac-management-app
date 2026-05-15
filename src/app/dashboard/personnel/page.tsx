@@ -1237,6 +1237,16 @@ export default function PersonnelPage() {
                               <ArchiveRestore className="w-4 h-4 mr-2" />
                               Restore to roster
                             </Button>
+                            {canPromote && (
+                              <Button
+                                variant="destructive"
+                                size="sm"
+                                onClick={() => handlePromptDeletePersonnelFromSystem(person)}
+                              >
+                                <Trash2 className="w-4 h-4 mr-2" />
+                                Delete permanently
+                              </Button>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -1730,15 +1740,31 @@ export default function PersonnelPage() {
                         They cannot sign in until you restore them to the active roster.
                       </p>
                     </div>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        handleUnarchivePersonnel(selectedPerson as PersonnelWithQualifications)
-                      }
-                    >
-                      <ArchiveRestore className="w-4 h-4 mr-2" />
-                      Restore to roster
-                    </Button>
+                    <div className="flex flex-wrap gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() =>
+                          handleUnarchivePersonnel(selectedPerson as PersonnelWithQualifications)
+                        }
+                      >
+                        <ArchiveRestore className="w-4 h-4 mr-2" />
+                        Restore to roster
+                      </Button>
+                      {canPromote && (
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={() =>
+                            handlePromptDeletePersonnelFromSystem(
+                              selectedPerson as PersonnelWithQualifications
+                            )
+                          }
+                        >
+                          <Trash2 className="w-4 h-4 mr-2" />
+                          Delete permanently
+                        </Button>
+                      )}
+                    </div>
                   </CardContent>
                 </Card>
               ) : null}
