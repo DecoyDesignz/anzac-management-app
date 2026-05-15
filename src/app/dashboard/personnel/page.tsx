@@ -43,6 +43,7 @@ import { Id } from "../../../../convex/_generated/dataModel"
 import { getUserFriendlyError, getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
 import { generateTemporaryPassword } from "../../../../convex/helpers"
+import { useDashboardAccess } from "@/lib/dashboard-access"
 
 type PersonnelFormMode = "add" | "edit" | null
 
@@ -65,6 +66,7 @@ type PersonnelWithQualifications = {
 export default function PersonnelPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
+  const { canEdit, isLoading: sessionLoading } = useDashboardAccess()
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
   const [viewMode, setViewMode] = useState<"list" | "matrix">("list")
@@ -118,29 +120,48 @@ export default function PersonnelPage() {
 
   // Check user permissions
   const canPromote = session?.user?.role === 'administrator' || session?.user?.role === 'super_admin'
-  const canEditPersonnel = session?.user?.role !== 'game_master'
+  const canEditPersonnel = canEdit && session?.user?.role !== 'game_master'
   const isInstructor = session?.user?.role === 'instructor'
   const isStaff = session?.user?.role === 'super_admin' || 
                   session?.user?.role === 'administrator' || 
                   session?.user?.role === 'instructor' || 
                   session?.user?.role === 'game_master'
 
-  const personnel = useQuery(
+  const personnelAuth = useQuery(
     api.personnel.listPersonnelWithQualifications,
     session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
   )
-  const ranks = useQuery(
+  const personnelPublic = useQuery(
+    api.personnel.listPersonnelWithQualificationsPublic,
+    !sessionLoading && !session?.user?.id ? { status: "active" } : "skip"
+  )
+  const personnel = session?.user?.id ? personnelAuth : personnelPublic
+
+  const ranksAuth = useQuery(
     api.ranks.listRanks,
     session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
-  const qualifications = useQuery(
+  const ranksPublic = useQuery(api.ranks.listRanksPublic, !sessionLoading && !session?.user?.id ? {} : "skip")
+  const ranks = session?.user?.id ? ranksAuth : ranksPublic
+
+  const qualificationsAuth = useQuery(
     api.qualifications.listQualificationsWithCounts,
     session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
+  const qualificationsPublic = useQuery(
+    api.qualifications.listQualificationsWithCountsPublic,
+    !sessionLoading && !session?.user?.id ? {} : "skip"
+  )
+  const qualifications = session?.user?.id ? qualificationsAuth : qualificationsPublic
+
   const managedSchools = useQuery(
     api.schools.listManagedSchools,
-    session?.user?.id
-      ? { userId: session.user.id as Id<"personnel">, username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
+    canEdit && session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          username: session.user.name ?? "",
+          role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin",
+        }
       : "skip"
   )
   const createPersonnel = useMutation(api.personnel.createPersonnel)
@@ -151,7 +172,12 @@ export default function PersonnelPage() {
   const deletePersonnel = useMutation(api.personnel.deletePersonnel)
   const updateStaffNotes = useMutation(api.personnel.updateStaffNotes)
   const grantSystemAccess = useAction(api.userActions.grantSystemAccess)
-  const availableRoles = useQuery(api.users.getAllRoles, {})
+  const availableRoles = useQuery(
+    api.users.getAllRoles,
+    canEdit && session?.user?.id
+      ? { userId: session.user.id as Id<"personnel"> }
+      : "skip"
+  )
   
   // Get full personnel details when detail dialog opens (for staff notes)
   const personnelDetails = useQuery(
@@ -1042,18 +1068,25 @@ export default function PersonnelPage() {
                           </div>
                         </div>
                       )}
-                      {selectedPerson.email && (
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Email</Label>
-                          <p className="font-medium text-sm">{selectedPerson.email}</p>
-                        </div>
-                      )}
-                      {selectedPerson.phone && (
-                        <div>
-                          <Label className="text-xs text-muted-foreground">Phone</Label>
-                          <p className="font-medium">{selectedPerson.phone}</p>
-                        </div>
-                      )}
+                      {(() => {
+                        const contact = selectedPerson as { email?: string; phone?: string }
+                        return (
+                          <>
+                            {contact.email ? (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Email</Label>
+                                <p className="font-medium text-sm">{contact.email}</p>
+                              </div>
+                            ) : null}
+                            {contact.phone ? (
+                              <div>
+                                <Label className="text-xs text-muted-foreground">Phone</Label>
+                                <p className="font-medium">{contact.phone}</p>
+                              </div>
+                            ) : null}
+                          </>
+                        )
+                      })()}
                       {selectedPerson.joinDate && (
                         <div>
                           <Label className="text-xs text-muted-foreground">Join Date</Label>

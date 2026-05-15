@@ -28,9 +28,11 @@ import { isValidTime } from "@/lib/validation"
 import { formatDateSydney, formatTimeRangeSydney } from "@/lib/formatting"
 import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
+import { useDashboardAccess } from "@/lib/dashboard-access"
 
 export default function CalendarPage() {
   const { data: session } = useSession()
+  const { isAuthed, canEdit, isLoading: sessionLoading } = useDashboardAccess()
   const [selectedMonth, setSelectedMonth] = useState(new Date())
   const [bookingModalOpen, setBookingModalOpen] = useState(false)
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -71,12 +73,21 @@ export default function CalendarPage() {
   // Fetch data for form and upcoming events
   const servers = useQuery(
     api.events.listServers,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel">, activeOnly: true } : "skip"
+    isAuthed && session?.user?.id
+      ? { userId: session.user.id as Id<"personnel">, activeOnly: true }
+      : "skip"
   )
+  const serversPublic = useQuery(
+    api.events.listServersPublic,
+    !sessionLoading && !isAuthed ? { activeOnly: true } : "skip"
+  )
+  const serversResolved = isAuthed ? servers : serversPublic
+
   const systemUsers = useQuery(
     api.users.listUsersWithRoles,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    isAuthed && session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
+  const systemUsersResolved = isAuthed ? (systemUsers ?? []) : []
   
   // Memoize the date range to prevent infinite re-renders
   // Update every minute to keep it relatively fresh
@@ -99,13 +110,23 @@ export default function CalendarPage() {
     }
   }, [currentMinute, session?.user?.id])
   
-  // Get all upcoming events (current time to 30 days out)
-  const allUpcomingEvents = useQuery(
+  const allUpcomingEventsAuth = useQuery(
     api.events.listEvents,
-    session?.user?.id && upcomingEventsDateRange.userId
+    isAuthed &&
+      upcomingEventsDateRange.userId
       ? { userId: upcomingEventsDateRange.userId, startDate: upcomingEventsDateRange.startDate, endDate: upcomingEventsDateRange.endDate }
       : "skip"
   )
+  const allUpcomingEventsPublic = useQuery(
+    api.events.listEventsPublic,
+    !sessionLoading && !isAuthed
+      ? {
+          startDate: upcomingEventsDateRange.startDate,
+          endDate: upcomingEventsDateRange.endDate,
+        }
+      : "skip"
+  )
+  const allUpcomingEvents = isAuthed ? allUpcomingEventsAuth : allUpcomingEventsPublic
 
   // Mutations
   const createEvent = useMutation(api.events.createEvent)
@@ -358,9 +379,9 @@ export default function CalendarPage() {
   }
 
   const getAvailableInstructors = (eventCategory: "training" | "operation") => {
-    if (!systemUsers) return []
+    if (!systemUsersResolved.length) return []
     // Filter users based on event category
-    return systemUsers.filter(user => {
+    return systemUsersResolved.filter(user => {
       if (eventCategory === "training") {
         return user.roles?.includes("instructor")
       } else if (eventCategory === "operation") {
@@ -379,8 +400,8 @@ export default function CalendarPage() {
   }
 
   const getAllUserOptions = (): CheckboxOption[] => {
-    if (!systemUsers) return []
-    return systemUsers.map(user => ({
+    if (!systemUsersResolved.length) return []
+    return systemUsersResolved.map(user => ({
       id: user._id,
       label: user.name,
       icon: GraduationCap,
@@ -540,7 +561,7 @@ export default function CalendarPage() {
   }, [allUpcomingEvents, currentMinute])
 
   // Loading state
-  if (!servers || !systemUsers) {
+  if (sessionLoading || serversResolved === undefined || (isAuthed && systemUsers === undefined)) {
     return <LoadingState type="skeleton" count={5} />
   }
 
@@ -558,10 +579,11 @@ export default function CalendarPage() {
             </Badge>
           </div>
           <p className="text-muted-foreground text-sm md:text-base lg:text-lg">
-            Manage bookings
+            {canEdit ? "Manage bookings" : "View scheduled training and operations"}
           </p>
         </div>
         
+        {canEdit ? (
         <div className="flex gap-2 md:gap-3 flex-wrap w-full md:w-auto">
           <Button variant="outline" size="lg" onClick={handleClearModalOpen}>
             <Trash2 className="w-5 h-5 mr-2" />
@@ -572,6 +594,7 @@ export default function CalendarPage() {
             Make Booking
           </Button>
         </div>
+        ) : null}
       </div>
 
       {/* Upcoming Events and Instructions - Above Calendar */}
@@ -754,7 +777,7 @@ export default function CalendarPage() {
                 <SelectValue placeholder="Select server" />
               </SelectTrigger>
               <SelectContent>
-                {servers?.map(server => (
+                {serversResolved?.map(server => (
                   <SelectItem key={server._id} value={server._id}>
                     {server.name}
                   </SelectItem>
@@ -878,7 +901,7 @@ export default function CalendarPage() {
                 <SelectValue placeholder="Select server" />
               </SelectTrigger>
               <SelectContent>
-                {servers?.map(server => (
+                {serversResolved?.map(server => (
                   <SelectItem key={server._id} value={server._id}>
                     {server.name}
                   </SelectItem>
@@ -940,8 +963,8 @@ export default function CalendarPage() {
           onWeekChange={handleMonthChange}
           bookingModalOpen={bookingModalOpen}
           onBookingModalOpenChange={setBookingModalOpen}
-          onEditEvent={handleEditModalOpen}
-          onBookingWithDate={handleBookingWithDate}
+          onEditEvent={canEdit ? handleEditModalOpen : undefined}
+          onBookingWithDate={canEdit ? handleBookingWithDate : undefined}
         />
       </div>
     </div>

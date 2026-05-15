@@ -10,6 +10,13 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -78,6 +85,22 @@ type SystemUser = {
   roles: string[]
   isActive?: boolean
   requirePasswordChange?: boolean
+}
+
+/** Matches Convex event purge helpers (Sydney calendar, AEST UTC+10). */
+const EVENT_PURGE_SYDNEY_OFFSET_MS = 10 * 60 * 60 * 1000
+
+function sydneyCalendarYearMonthFromTimestamp(ms: number): { year: number; month: number } {
+  const d = new Date(ms + EVENT_PURGE_SYDNEY_OFFSET_MS)
+  return { year: d.getUTCFullYear(), month: d.getUTCMonth() + 1 }
+}
+
+function subtractCalendarMonths(
+  ym: { year: number; month: number },
+  months: number
+): { year: number; month: number } {
+  const idx = ym.year * 12 + (ym.month - 1) - months
+  return { year: Math.floor(idx / 12), month: (idx % 12) + 1 }
 }
 
 function SortableRankItem({ rank, onEdit, onDelete }: {
@@ -185,7 +208,10 @@ export default function SystemManagementPage() {
     api.personnel.listPersonnelWithoutAccess,
     session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
-  const availableRoles = useQuery(api.users.getAllRoles, {})
+  const availableRoles = useQuery(
+    api.users.getAllRoles,
+    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+  )
   const maintenanceMode = useQuery(api.systemSettings.getMaintenanceMode, {})
 
   // Mutations
@@ -221,6 +247,23 @@ export default function SystemManagementPage() {
     if (!Number.isFinite(year) || month < 1 || month > 12) return null
     return { year, month }
   }, [eventPurgeMonth])
+
+  const eventPurgeMonthDropdownOptions = useMemo(() => {
+    const currentYm = sydneyCalendarYearMonthFromTimestamp(Date.now())
+    const formatter = new Intl.DateTimeFormat("en-AU", {
+      month: "long",
+      year: "numeric",
+      timeZone: "Australia/Sydney",
+    })
+    const out: { value: string; label: string }[] = []
+    for (let i = 1; i <= 6; i++) {
+      const ym = subtractCalendarMonths(currentYm, i)
+      const value = `${ym.year}-${String(ym.month).padStart(2, "0")}`
+      const label = formatter.format(new Date(Date.UTC(ym.year, ym.month - 1, 15)))
+      out.push({ value, label })
+    }
+    return out
+  }, [])
 
   const eventPurgePreview = useQuery(
     api.events.previewPurgeEventsCreatedBeforeMonth,
@@ -1036,14 +1079,25 @@ export default function SystemManagementPage() {
         <CardContent className="space-y-4">
           <div className="grid gap-2 max-w-md">
             <Label htmlFor="event-purge-month">Delete events created before</Label>
-            <Input
-              id="event-purge-month"
-              type="month"
-              value={eventPurgeMonth}
-              onChange={(e) => setEventPurgeMonth(e.target.value)}
-            />
+            <Select
+              value={eventPurgeMonth === "" ? "__none__" : eventPurgeMonth}
+              onValueChange={(v) => setEventPurgeMonth(v === "__none__" ? "" : v)}
+            >
+              <SelectTrigger id="event-purge-month" className="w-full">
+                <SelectValue placeholder="Select a month" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__none__">Select a month</SelectItem>
+                {eventPurgeMonthDropdownOptions.map((opt) => (
+                  <SelectItem key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <p className="text-xs text-muted-foreground">
-              Only full months before the current Sydney calendar month can be used. The current month and future months are blocked so recent data cannot be wiped by mistake.
+              Choose one of the six calendar months immediately before the current month (Australia/Sydney). The
+              current month and anything older than that window cannot be used here.
             </p>
           </div>
           {eventPurgeParsed && eventPurgePreview && (

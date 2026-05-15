@@ -22,6 +22,14 @@ export const listRanks = query({
   },
 });
 
+export const listRanksPublic = query({
+  args: {},
+  handler: async (ctx) => {
+    const ranks = await ctx.db.query("ranks").collect();
+    return ranks.sort((a, b) => (a.order ?? 999) - (b.order ?? 999));
+  },
+});
+
 /**
  * Get a specific rank
  */

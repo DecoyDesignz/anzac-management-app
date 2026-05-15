@@ -11,21 +11,28 @@ import { DashboardLoading } from "@/components/dashboard/dashboard-loading"
 import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { useTheme } from "@/providers/theme-provider"
 import { formatTimeSydney } from "@/lib/formatting"
+import { useDashboardAccess } from "@/lib/dashboard-access"
 
 export default function DashboardPage() {
   const { theme } = useTheme()
   const { data: session } = useSession()
+  const { isAuthed, isLoading: sessionLoading } = useDashboardAccess()
   const isDarkMode = theme === 'dark'
-  // Validate session before making queries
-  const isValidSession = session?.user?.id && typeof session.user.id === 'string' && session.user.id.length > 0;
+  const isValidSession = isAuthed && session?.user?.id && typeof session.user.id === 'string' && session.user.id.length > 0;
   
-  const dashboardData = useQuery(
+  const dashboardDataAuth = useQuery(
     api.dashboard.getDashboardOverview,
     isValidSession ? { userId: session.user.id } : "skip"
   )
+  const dashboardDataPublic = useQuery(
+    api.dashboard.getDashboardOverviewPublic,
+    !sessionLoading && !isValidSession ? {} : "skip"
+  )
+  const dashboardData = isValidSession ? dashboardDataAuth : dashboardDataPublic
   
   // Handle query errors, especially authentication errors
   useEffect(() => {
+    if (!isValidSession) return
     // Check if dashboardData is an error (Convex returns errors as objects)
     if (dashboardData && typeof dashboardData === 'object' && 'message' in dashboardData) {
       const errorMessage = typeof dashboardData.message === 'string' ? dashboardData.message : String(dashboardData.message || "")
@@ -121,21 +128,38 @@ export default function DashboardPage() {
       window.removeEventListener("error", handleError)
       window.removeEventListener("unhandledrejection", handleUnhandledRejection)
     }
-  }, [dashboardData])
-  const weekSchedule = useQuery(
+  }, [dashboardData, isValidSession])
+  const weekScheduleAuth = useQuery(
     api.events.getWeekSchedule,
     isValidSession ? { userId: session.user.id } : "skip"
   )
-  const nextWeekSchedule = useQuery(
+  const weekSchedulePublic = useQuery(
+    api.events.getWeekSchedulePublic,
+    !sessionLoading && !isValidSession ? {} : "skip"
+  )
+  const weekSchedule = isValidSession ? weekScheduleAuth : weekSchedulePublic
+
+  const nextWeekScheduleAuth = useQuery(
     api.events.getNextWeekSchedule,
     isValidSession ? { userId: session.user.id } : "skip"
   )
-  const nextEvent = useQuery(
+  const nextWeekSchedulePublic = useQuery(
+    api.events.getNextWeekSchedulePublic,
+    !sessionLoading && !isValidSession ? {} : "skip"
+  )
+  const nextWeekSchedule = isValidSession ? nextWeekScheduleAuth : nextWeekSchedulePublic
+
+  const nextEventAuth = useQuery(
     api.events.getNextEvent,
     isValidSession ? { userId: session.user.id } : "skip"
   )
+  const nextEventPublic = useQuery(
+    api.events.getNextEventPublic,
+    !sessionLoading && !isValidSession ? {} : "skip"
+  )
+  const nextEvent = isValidSession ? nextEventAuth : nextEventPublic
 
-  if (!dashboardData || !weekSchedule || !nextWeekSchedule) {
+  if (sessionLoading || !dashboardData || !weekSchedule || !nextWeekSchedule) {
     return <DashboardLoading />
   }
 
@@ -354,6 +378,7 @@ export default function DashboardPage() {
                   weekSchedule.map((event, idx) => {
                       const dateTime = formatDateTime(event.startDate)
                       const endTime = formatDateTime(event.endDate)
+                      const bookingCode = (event as { bookingCode?: string }).bookingCode
                       return (
                         <div
                           key={event._id}
@@ -406,9 +431,11 @@ export default function DashboardPage() {
                               </div>
 
                               <div className="pt-1">
+                                {bookingCode ? (
                                 <Badge variant="outline" className="text-xs font-mono">
-                                  Code: {event.bookingCode}
+                                  Code: {bookingCode}
                                 </Badge>
+                                ) : null}
                               </div>
                     </div>
                   </div>
@@ -446,6 +473,7 @@ export default function DashboardPage() {
                 nextWeekSchedule.map((event, idx) => {
                   const dateTime = formatDateTime(event.startDate)
                   const endTime = formatDateTime(event.endDate)
+                  const bookingCode = (event as { bookingCode?: string }).bookingCode
                   return (
                     <div
                       key={event._id}
@@ -498,9 +526,11 @@ export default function DashboardPage() {
                           </div>
 
                           <div className="pt-1">
+                            {bookingCode ? (
                             <Badge variant="outline" className="text-xs font-mono">
-                              Code: {event.bookingCode}
+                              Code: {bookingCode}
                             </Badge>
+                            ) : null}
                           </div>
                         </div>
                       </div>

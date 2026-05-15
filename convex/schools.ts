@@ -18,6 +18,13 @@ export const listSchools = query({
   },
 });
 
+export const listSchoolsPublic = query({
+  args: {},
+  handler: async (ctx) => {
+    return await ctx.db.query("schools").collect();
+  },
+});
+
 /**
  * Get a specific school with its qualifications
  */

@@ -3,6 +3,7 @@ import { mutation, internalMutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 import { internal } from "./_generated/api";
+import { requireRole } from "./helpers";
 
 // Rate limiting configuration
 const RATE_LIMIT_CONFIG = {
@@ -192,14 +193,17 @@ export const checkRateLimit = internalMutation({
 });
 
 /**
- * Get login attempt statistics for a username (for debugging/admin)
+ * Get login attempt statistics for a username (administrator+ only)
  */
 export const getLoginAttemptStats = query({
   args: {
+    userId: v.id("personnel"),
     username: v.string(),
     windowMinutes: v.optional(v.number()), // Default 60 minutes
   },
   handler: async (ctx, args) => {
+    await requireRole(ctx, args.userId, "administrator");
+
     const windowMs = (args.windowMinutes || 60) * 60 * 1000;
     const windowStart = Date.now() - windowMs;
     

@@ -6,18 +6,13 @@ import { useSession } from "next-auth/react"
 
 export default function Home() {
   const router = useRouter()
-  const { data: session, status } = useSession()
+  const { status } = useSession()
   
   useEffect(() => {
-    // Wait for auth to load
     if (status === "loading") return
-    
-    if (session) {
-      router.push("/dashboard")
-    } else {
-      router.push("/login")
-    }
-  }, [session, status, router])
+    // Home always goes to the dashboard (public when logged out; full app when logged in)
+    router.replace("/dashboard")
+  }, [status, router])
   
   // Show nothing while redirecting
   return null

@@ -13,7 +13,14 @@ import { cn } from "@/lib/utils"
 import { useSidebar } from "@/providers/sidebar-provider"
 import { useTheme } from "@/providers/theme-provider"
 import { useToast } from "@/hooks/use-toast"
-import { LayoutDashboard, Users, Settings2, ChevronLeft, ChevronRight, MoreVertical, LogOut, ChevronDown, HelpCircle, Calendar, GraduationCap, Award, Shield, Sun, Moon } from "lucide-react"
+import { LayoutDashboard, Users, Settings2, ChevronLeft, ChevronRight, MoreVertical, LogOut, ChevronDown, HelpCircle, Calendar, GraduationCap, Award, Shield, Sun, Moon, LogIn } from "lucide-react"
+
+const PUBLIC_NAV_HREFS = new Set([
+  "/dashboard",
+  "/dashboard/personnel",
+  "/dashboard/qualifications",
+  "/dashboard/calendar",
+])
 
 const navigation = [
   { 
@@ -69,7 +76,8 @@ const navigation = [
 export function Sidebar() {
   const pathname = usePathname()
   const router = useRouter()
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
+  const isGuest = status === "unauthenticated"
   const { isCollapsed, setIsCollapsed, isMobileOpen, setIsMobileOpen } = useSidebar()
   const { theme, setTheme, mounted } = useTheme()
   const { toast } = useToast()
@@ -136,6 +144,9 @@ export function Sidebar() {
           <div className="space-y-1">
             {navigation
               .filter((item) => {
+                if (isGuest && !PUBLIC_NAV_HREFS.has(item.href)) {
+                  return false
+                }
                 // Show admin-only items only to administrators and super_admins
                 if (item.adminOnly) {
                   const userRole = session?.user?.role
@@ -185,7 +196,7 @@ export function Sidebar() {
           </div>
 
           {/* Quick Actions Section */}
-          {!isCollapsed && (
+          {!isCollapsed && !isGuest && (
             <div className="mt-6">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
                 Quick Actions
@@ -201,10 +212,42 @@ export function Sidebar() {
               </div>
             </div>
           )}
+
+          {!isCollapsed && isGuest && (
+            <div className="mt-6">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
+                Account
+              </h3>
+              <Button variant="default" className="w-full" asChild>
+                <Link href={`/login?callbackUrl=${encodeURIComponent(pathname || "/dashboard")}`}>
+                  <LogIn className="w-4 h-4 mr-2" />
+                  Log in
+                </Link>
+              </Button>
+              <p className="text-xs text-muted-foreground mt-2 px-1">
+                Staff login unlocks bookings and management tools.
+              </p>
+            </div>
+          )}
         </nav>
 
         {/* Footer */}
         <div className="p-4 border-t border-border/30 space-y-3">
+          {isGuest ? (
+            <Button
+              variant="outline"
+              className={cn("w-full", isCollapsed && "px-2")}
+              asChild
+            >
+              <Link
+                href={`/login?callbackUrl=${encodeURIComponent(pathname || "/dashboard")}`}
+                title="Log in"
+              >
+                <LogIn className={cn("w-5 h-5", !isCollapsed && "mr-2")} />
+                {!isCollapsed && <span>Log in</span>}
+              </Link>
+            </Button>
+          ) : null}
           {/* Theme Toggle - Only render after mounting to avoid hydration mismatch */}
           {mounted && (
             <button
@@ -229,6 +272,7 @@ export function Sidebar() {
           )}
 
           {/* User Profile */}
+          {!isGuest && (
           <Popover>
             <PopoverTrigger asChild>
               <button className={cn(
@@ -293,6 +337,7 @@ export function Sidebar() {
               </div>
             </PopoverContent>
           </Popover>
+          )}
         </div>
       </aside>
     </>

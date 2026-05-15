@@ -14,7 +14,7 @@ export interface EventType {
   instructors: Array<{ user?: Personnel | null; role?: string }>;
   eventTypeColor?: string;
   eventType?: { color: string } | null;
-  bookingCode: string;
+  bookingCode?: string;
   maxParticipants?: number;
   currentParticipants?: number;
   description?: string;

@@ -3,8 +3,6 @@ import { mutation, query, internalQuery, internalMutation } from "./_generated/s
 import type { QueryCtx } from "./_generated/server";
 import { requireAuth, requireRole } from "./helpers";
 import type { Id, Doc } from "./_generated/dataModel";
-import { api, internal } from "./_generated/api";
-
 /**
  * Get role by role name
  */
@@ -24,11 +22,14 @@ async function getRoleById(ctx: QueryCtx, roleId: Id<"roles">) {
 }
 
 /**
- * Get all available roles
+ * Get all available roles (authenticated users only — not exposed to anonymous clients)
  */
 export const getAllRoles = query({
-  args: {},
-  handler: async (ctx) => {
+  args: {
+    userId: v.id("personnel"),
+  },
+  handler: async (ctx, args) => {
+    await requireAuth(ctx, args.userId);
     return await ctx.db.query("roles").collect();
   },
 });
@@ -42,7 +43,7 @@ export const getCurrentUser = query({
     userId: v.id("personnel"), // User ID from NextAuth session
   },
   handler: async (ctx, args) => {
-    // Get the user by ID
+    await requireAuth(ctx, args.userId);
     const user = await ctx.db.get(args.userId);
     if (!user) {
       return null;
@@ -66,51 +67,6 @@ export const getUserByUsernameInternal = internalQuery({
       .first();
     
     return person;
-  },
-});
-
-/**
- * Get a user by username/callSign (public query - excludes sensitive fields)
- * This returns user information without passwordHash or passwordSalt
- */
-export const getUserByUsername = query({
-  args: { username: v.string() },
-  handler: async (ctx, args) => {
-    const person = await ctx.db
-      .query("personnel")
-      .withIndex("by_callsign", (q) => q.eq("callSign", args.username))
-      .first();
-    
-    if (!person) {
-      return null;
-    }
-    
-    // Exclude sensitive password fields from public query
-    const { passwordHash, passwordSalt, ...safePerson } = person;
-    return safePerson;
-  },
-});
-
-/**
- * Get a user by email (for backward compatibility)
- * @deprecated Use getUserByUsername instead
- * Excludes passwordHash and passwordSalt for security
- */
-export const getUserByEmail = query({
-  args: { email: v.string() },
-  handler: async (ctx, args) => {
-    const person = await ctx.db
-      .query("personnel")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
-    
-    if (!person) {
-      return null;
-    }
-    
-    // Exclude sensitive password fields from public query
-    const { passwordHash, passwordSalt, ...safePerson } = person;
-    return safePerson;
   },
 });
 

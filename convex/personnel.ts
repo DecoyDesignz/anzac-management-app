@@ -161,6 +161,82 @@ export const listPersonnelWithQualifications = query({
   },
 });
 
+/** Public roster view: no auth; omits contact info, notes, and password fields. */
+export const listPersonnelWithQualificationsPublic = query({
+  args: {
+    status: v.optional(
+      v.union(
+        v.literal("active"),
+        v.literal("inactive"),
+        v.literal("leave"),
+        v.literal("discharged")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    const personnel = args.status
+      ? await ctx.db
+          .query("personnel")
+          .withIndex("by_status", (q) => q.eq("status", args.status!))
+          .collect()
+      : await ctx.db.query("personnel").collect();
+
+    const rolesTable = await ctx.db.query("roles").collect();
+    const roleMap = new Map(rolesTable.map((role) => [role._id, role]));
+
+    const personnelWithDetails = await Promise.all(
+      personnel.map(async (person) => {
+        const rank = person.rankId ? await ctx.db.get(person.rankId) : null;
+
+        const personnelQuals = await ctx.db
+          .query("personnelQualifications")
+          .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
+          .collect();
+
+        const qualifications = await Promise.all(
+          personnelQuals.map(async (pq) => {
+            const qualification = await ctx.db.get(pq.qualificationId);
+            return qualification;
+          })
+        );
+
+        const personnelRoles = await ctx.db
+          .query("userRoles")
+          .withIndex("by_personnel", (q) => q.eq("personnelId", person._id))
+          .collect();
+
+        const roleDetails = personnelRoles
+          .map((ur) => (ur.roleId ? roleMap.get(ur.roleId) : null))
+          .filter(Boolean)
+          .map((role) => ({
+            name: role!.roleName,
+            displayName: role!.displayName,
+            color: role!.color,
+          }));
+
+        return {
+          _id: person._id,
+          callSign: person.callSign,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          rankId: person.rankId,
+          status: person.status,
+          joinDate: person.joinDate,
+          dischargeDate: person.dischargeDate,
+          rank,
+          qualifications: qualifications.filter((q) => q !== null),
+          roles: roleDetails,
+          hasSystemAccess: person.passwordHash !== undefined,
+          hasNotes: false,
+          hasStaffNotes: false,
+        };
+      })
+    );
+
+    return personnelWithDetails;
+  },
+});
+
 /**
  * Get a specific personnel member with full details
  */

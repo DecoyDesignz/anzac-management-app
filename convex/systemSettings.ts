@@ -3,16 +3,21 @@ import { v } from "convex/values";
 import { requireRole } from "./helpers";
 
 /**
- * Get a system setting by key
+ * Get a system setting by key (administrator or super_admin only)
  */
 export const getSetting = query({
-  args: { key: v.string() },
+  args: {
+    userId: v.id("personnel"),
+    key: v.string(),
+  },
   handler: async (ctx, args) => {
+    await requireRole(ctx, args.userId, "administrator");
+
     const setting = await ctx.db
       .query("systemSettings")
       .withIndex("by_key", (q) => q.eq("key", args.key))
       .first();
-    
+
     return setting ? JSON.parse(setting.value) : null;
   },
 });

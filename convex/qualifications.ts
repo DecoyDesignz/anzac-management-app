@@ -130,6 +130,39 @@ export const listQualificationsWithCounts = query({
   },
 });
 
+/** Public qualification browser (counts only). */
+export const listQualificationsWithCountsPublic = query({
+  args: {
+    schoolId: v.optional(v.id("schools")),
+  },
+  handler: async (ctx, args) => {
+    const qualifications = args.schoolId
+      ? await ctx.db
+          .query("qualifications")
+          .withIndex("by_school", (q) => q.eq("schoolId", args.schoolId!))
+          .collect()
+      : await ctx.db.query("qualifications").collect();
+
+    const qualificationsWithCounts = await Promise.all(
+      qualifications.map(async (qual) => {
+        const school = await ctx.db.get(qual.schoolId);
+        const personnelQuals = await ctx.db
+          .query("personnelQualifications")
+          .withIndex("by_qualification", (q) => q.eq("qualificationId", qual._id))
+          .collect();
+
+        return {
+          ...qual,
+          school,
+          personnelCount: personnelQuals.length,
+        };
+      })
+    );
+
+    return qualificationsWithCounts;
+  },
+});
+
 /**
  * Create a new qualification (Administrator or assigned Instructor only - Game Masters cannot create)
  */
@@ -266,6 +299,55 @@ export const getPersonnelWithQualification = query({
             expiryDate: pq.expiryDate,
             awardedBy: awardedBy?.callSign,
             notes: pq.notes,
+          },
+        };
+      })
+    );
+
+    return {
+      qualification,
+      personnel: personnelWithDetails.filter((p) => p !== null),
+    };
+  },
+});
+
+/** Who holds a qualification — public-safe personnel fields only. */
+export const getPersonnelWithQualificationPublic = query({
+  args: {
+    qualificationId: v.id("qualifications"),
+  },
+  handler: async (ctx, args) => {
+    const qualification = await ctx.db.get(args.qualificationId);
+    if (!qualification) {
+      return null;
+    }
+
+    const personnelQuals = await ctx.db
+      .query("personnelQualifications")
+      .withIndex("by_qualification", (q) => q.eq("qualificationId", args.qualificationId))
+      .collect();
+
+    const personnelWithDetails = await Promise.all(
+      personnelQuals.map(async (pq) => {
+        const person = await ctx.db.get(pq.personnelId);
+        if (!person) return null;
+
+        const rank = person.rankId ? await ctx.db.get(person.rankId) : null;
+        const awardedBy = pq.awardedBy ? await ctx.db.get(pq.awardedBy) : null;
+
+        return {
+          _id: person._id,
+          callSign: person.callSign,
+          firstName: person.firstName,
+          lastName: person.lastName,
+          rankId: person.rankId,
+          status: person.status,
+          joinDate: person.joinDate,
+          rank,
+          qualificationDetails: {
+            awardedDate: pq.awardedDate,
+            expiryDate: pq.expiryDate,
+            awardedBy: awardedBy?.callSign,
           },
         };
       })

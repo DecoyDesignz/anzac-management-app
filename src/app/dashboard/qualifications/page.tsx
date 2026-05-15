@@ -31,6 +31,7 @@ import { getUserFriendlyError, getSchoolColorStyles, getThemeAwareColor } from "
 import { useTheme } from "@/providers/theme-provider"
 import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
+import { useDashboardAccess } from "@/lib/dashboard-access"
 
 type QualificationWithSchool = {
   _id: string
@@ -68,6 +69,7 @@ import {
 export default function QualificationsPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
+  const { canEdit, isLoading: sessionLoading } = useDashboardAccess()
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
   const [searchTerm, setSearchTerm] = useState("")
@@ -110,35 +112,62 @@ export default function QualificationsPage() {
   const [isAwarding, setIsAwarding] = useState(false)
   const [awardFormError, setAwardFormError] = useState<string | null>(null)
   
-  // Check if user can add/edit qualifications (all roles except game_master)
-  const canManageQualifications = session?.user?.role !== 'game_master'
-  const isInstructor = session?.user?.role === 'instructor'
+  const canManageQualifications = canEdit && session?.user?.role !== "game_master"
+  const isInstructor = session?.user?.role === "instructor"
 
-  // Fetch data
-  const qualifications = useQuery(
+  const qualificationsAuth = useQuery(
     api.qualifications.listQualificationsWithCounts,
     session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
-  const schools = useQuery(
+  const qualificationsPublic = useQuery(
+    api.qualifications.listQualificationsWithCountsPublic,
+    !sessionLoading && !session?.user?.id ? {} : "skip"
+  )
+  const qualifications = session?.user?.id ? qualificationsAuth : qualificationsPublic
+
+  const schoolsAuth = useQuery(
     api.schools.listSchools,
     session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
   )
+  const schoolsPublic = useQuery(api.schools.listSchoolsPublic, !sessionLoading && !session?.user?.id ? {} : "skip")
+  const schools = session?.user?.id ? schoolsAuth : schoolsPublic
+
   const managedSchools = useQuery(
     api.schools.listManagedSchools,
-    session?.user?.id
-      ? { userId: session.user.id as Id<"personnel">, username: session.user.name, role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin" }
+    canEdit && session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          username: session.user.name ?? "",
+          role: session.user.role as "administrator" | "instructor" | "game_master" | "super_admin",
+        }
       : "skip"
   )
-  const personnel = useQuery(
+
+  const personnelAuth = useQuery(
     api.personnel.listPersonnel,
     session?.user?.id ? { userId: session.user.id as Id<"personnel">, status: "active" } : "skip"
   )
-  const personnelWithQualification = useQuery(
+  const personnelPublic = useQuery(
+    api.personnel.listPersonnelWithQualificationsPublic,
+    !sessionLoading && !session?.user?.id ? { status: "active" } : "skip"
+  )
+  const personnel = session?.user?.id ? personnelAuth : personnelPublic
+
+  const personnelWithQualificationAuth = useQuery(
     api.qualifications.getPersonnelWithQualification,
     viewingQualificationId && session?.user?.id
       ? { userId: session.user.id as Id<"personnel">, qualificationId: viewingQualificationId }
       : "skip"
   )
+  const personnelWithQualificationPublic = useQuery(
+    api.qualifications.getPersonnelWithQualificationPublic,
+    viewingQualificationId && !sessionLoading && !session?.user?.id
+      ? { qualificationId: viewingQualificationId }
+      : "skip"
+  )
+  const personnelWithQualification = session?.user?.id
+    ? personnelWithQualificationAuth
+    : personnelWithQualificationPublic
   
   // Mutations
   const createQualification = useMutation(api.qualifications.createQualification)
@@ -451,7 +480,7 @@ export default function QualificationsPage() {
   const averagePerPerson = personnel?.length ? Math.round(totalAwarded / personnel.length) : 0
 
   // Loading state
-  if (!qualifications || !schools || !personnel) {
+  if (sessionLoading || !qualifications || !schools || !personnel) {
     return <LoadingState type="skeleton" count={5} />
   }
 

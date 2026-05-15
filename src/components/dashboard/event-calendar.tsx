@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useQuery, useMutation } from "convex/react"
 import { useSession } from "next-auth/react"
 import { api } from "../../../convex/_generated/api"
@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog"
 import { Id } from "../../../convex/_generated/dataModel"
 import { EventCard, EventDetailView, EventType } from "@/components/events"
+import { useDashboardAccess } from "@/lib/dashboard-access"
 import { MobileMonthCalendar } from "./mobile-month-calendar"
 import { CalendarDayCard } from "./calendar-day-card"
 
@@ -40,6 +41,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBooki
   const [isAnimating, setIsAnimating] = useState(false)
   const [viewMode, setViewMode] = useState<'week' | 'month'>('month')
   const { data: session } = useSession()
+  const { isAuthed, canEdit, isLoading: sessionLoading } = useDashboardAccess()
   
   // Check if we're viewing the current week
   const currentWeekStart = getWeekStart(new Date())
@@ -68,28 +70,6 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBooki
     }
     setExpandedGroups(newExpanded)
   }
-
-  // Fetch data based on view mode
-  const events = useQuery(
-    api.events.listEvents,
-    session?.user?.id ? (viewMode === 'week' ? {
-      userId: session.user.id as Id<"personnel">,
-      startDate: getWeekStart(selectedWeek).getTime(),
-      endDate: getWeekEnd(selectedWeek).getTime()
-    } : {
-      userId: session.user.id as Id<"personnel">,
-      startDate: getMonthStart(selectedWeek).getTime(),
-      endDate: getMonthEnd(selectedWeek).getTime()
-    }) : "skip"
-  )
-
-  // Debug logging for events
-  if (viewMode === 'month' && events) {
-    console.log('Month view events:', events.length, events.map(e => ({ title: e.title, startDate: new Date(e.startDate).toLocaleDateString('en-CA', { timeZone: 'Australia/Sydney' }) })))
-  }
-
-  // Mutations
-  const clearEventByCode = useMutation(api.events.clearEventByCode)
 
   // Helper functions
   // Get the start of the week (Monday 00:00 Sydney time) as a UTC timestamp
@@ -157,6 +137,48 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBooki
     // Create a simple date for the last day of the month
     return new Date(year, month, lastDay, 23, 59, 59, 999)
   }
+
+  const eventsRange = useMemo(
+    () =>
+      viewMode === "week"
+        ? {
+            startDate: getWeekStart(selectedWeek).getTime(),
+            endDate: getWeekEnd(selectedWeek).getTime(),
+          }
+        : {
+            startDate: getMonthStart(selectedWeek).getTime(),
+            endDate: getMonthEnd(selectedWeek).getTime(),
+          },
+    [viewMode, selectedWeek]
+  )
+
+  const eventsAuth = useQuery(
+    api.events.listEvents,
+    isAuthed && session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          ...eventsRange,
+        }
+      : "skip"
+  )
+  const eventsPublic = useQuery(
+    api.events.listEventsPublic,
+    !sessionLoading && !isAuthed ? eventsRange : "skip"
+  )
+  const events = isAuthed ? eventsAuth : eventsPublic
+
+  if (viewMode === "month" && events) {
+    console.log(
+      "Month view events:",
+      events.length,
+      events.map((e) => ({
+        title: e.title,
+        startDate: new Date(e.startDate).toLocaleDateString("en-CA", { timeZone: "Australia/Sydney" }),
+      }))
+    )
+  }
+
+  const clearEventByCode = useMutation(api.events.clearEventByCode)
 
   function formatDate(timestamp: number): string {
     return new Date(timestamp).toLocaleDateString('en-US', { 

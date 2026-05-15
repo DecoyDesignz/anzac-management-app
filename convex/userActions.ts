@@ -288,8 +288,8 @@ export const createUserAccount = action({
     }
 
     // Check if callSign already exists
-    const existingPerson = await ctx.runQuery(api.users.getUserByUsername, { 
-      username: args.name 
+    const existingPerson = await ctx.runQuery(internal.users.getUserByUsernameInternal, {
+      username: args.name,
     });
 
     if (existingPerson) {

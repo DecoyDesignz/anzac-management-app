@@ -34,6 +34,9 @@ export function EventDetailView({ event, onEdit, onClear, onClearEvent }: EventD
   };
 
   const handleClearEvent = async () => {
+    if (!event.bookingCode) {
+      return;
+    }
     if (onClearEvent) {
       try {
         await onClearEvent(event.bookingCode);
@@ -55,7 +58,11 @@ export function EventDetailView({ event, onEdit, onClear, onClearEvent }: EventD
         </div>
         <div>
           <Label>Booking Code</Label>
-          <p className="text-sm font-mono bg-muted px-2 py-1 rounded">{event.bookingCode}</p>
+          {event.bookingCode ? (
+            <p className="text-sm font-mono bg-muted px-2 py-1 rounded">{event.bookingCode}</p>
+          ) : (
+            <p className="text-sm text-muted-foreground">Not shown on the public calendar.</p>
+          )}
         </div>
         <div>
           <Label>Date & Time</Label>
@@ -126,7 +133,7 @@ export function EventDetailView({ event, onEdit, onClear, onClearEvent }: EventD
               Edit Event
             </Button>
           )}
-          {(onClear || onClearEvent) && (
+          {(onClear || onClearEvent) && event.bookingCode && (
             <Button 
               variant="destructive" 
               size="sm"

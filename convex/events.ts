@@ -1,7 +1,22 @@
 import { v } from "convex/values";
 import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
-import { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { requireAuth, requireRole, resolveUserIdToPersonnel } from "./helpers";
+
+/** Strip sensitive fields for anonymous calendar / event views. */
+function sanitizePersonnelForPublic(person: Doc<"personnel"> | null | undefined) {
+  if (!person) return null;
+  return {
+    _id: person._id,
+    callSign: person.callSign,
+    firstName: person.firstName,
+    lastName: person.lastName,
+    rankId: person.rankId,
+    status: person.status,
+    joinDate: person.joinDate,
+    dischargeDate: person.dischargeDate,
+  };
+}
 
 /** Sydney calendar (AEST UTC+10) for purge rules — aligned with createEvent / clearOldEvents */
 const SYDNEY_OFFSET_MS = 10 * 60 * 60 * 1000;
@@ -24,6 +39,14 @@ function compareYearMonth(
   return a.month - b.month;
 }
 
+function subtractCalendarMonths(
+  ym: { year: number; month: number },
+  months: number
+): { year: number; month: number } {
+  const idx = ym.year * 12 + (ym.month - 1) - months;
+  return { year: Math.floor(idx / 12), month: (idx % 12) + 1 };
+}
+
 async function deleteEventAndRelations(ctx: MutationCtx, eventId: Id<"events">) {
   const participants = await ctx.db
     .query("eventParticipants")
@@ -44,8 +67,8 @@ async function deleteEventAndRelations(ctx: MutationCtx, eventId: Id<"events">) 
 
 /**
  * Preview how many events would be removed (Convex `_creationTime` before the
- * first day of the selected month, Sydney time). Only months strictly before
- * the current Sydney calendar month are allowed.
+ * first day of the selected month, Sydney time). Only the six calendar months
+ * immediately before the current Sydney month are allowed.
  */
 export const previewPurgeEventsCreatedBeforeMonth = query({
   args: {
@@ -78,6 +101,16 @@ export const previewPurgeEventsCreatedBeforeMonth = query({
         code: "CURRENT_MONTH" as const,
         message:
           "The request could not be completed because the selected period falls within the current calendar month.",
+      };
+    }
+
+    const oldestAllowed = subtractCalendarMonths(currentYm, 6);
+    if (compareYearMonth(selectedYm, oldestAllowed) < 0) {
+      return {
+        ok: false as const,
+        code: "TOO_OLD" as const,
+        message:
+          "Only the six calendar months immediately before the current month (Sydney time) can be selected.",
       };
     }
 
@@ -117,6 +150,13 @@ export const purgeEventsCreatedBeforeMonth = mutation({
     if (compareYearMonth(selectedYm, currentYm) === 0) {
       throw new Error(
         "The request could not be completed because the selected period falls within the current calendar month."
+      );
+    }
+
+    const oldestAllowed = subtractCalendarMonths(currentYm, 6);
+    if (compareYearMonth(selectedYm, oldestAllowed) < 0) {
+      throw new Error(
+        "Only the six calendar months immediately before the current month (Sydney time) can be selected."
       );
     }
 
@@ -206,6 +246,88 @@ export const listEvents = query({
 
         return {
           ...event,
+          eventType,
+          server,
+          instructors: instructorsWithDetails,
+          createdBy,
+          participants: participantsWithDetails,
+        };
+      })
+    );
+
+    return eventsWithDetails;
+  },
+});
+
+/** Same as listEvents but without auth; nested personnel is redacted for privacy. */
+export const listEventsPublic = query({
+  args: {
+    startDate: v.number(),
+    endDate: v.number(),
+    status: v.optional(
+      v.union(
+        v.literal("scheduled"),
+        v.literal("in_progress"),
+        v.literal("completed"),
+        v.literal("cancelled")
+      )
+    ),
+  },
+  handler: async (ctx, args) => {
+    let events = await ctx.db
+      .query("events")
+      .withIndex("by_date", (q) =>
+        q.gte("startDate", args.startDate).lte("startDate", args.endDate)
+      )
+      .collect();
+
+    if (args.status) {
+      events = events.filter((event) => event.status === args.status);
+    }
+
+    const eventsWithDetails = await Promise.all(
+      events.map(async (event) => {
+        const eventType = event.eventTypeId ? await ctx.db.get(event.eventTypeId) : null;
+        const server = await ctx.db.get(event.serverId);
+        const createdByDoc = event.createdBy ? await ctx.db.get(event.createdBy) : null;
+        const createdBy = sanitizePersonnelForPublic(createdByDoc);
+
+        const eventInstructors = await ctx.db
+          .query("eventInstructors")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const instructorsWithDetails = await Promise.all(
+          eventInstructors.map(async (ei) => {
+            if (!ei.personnelId) return { ...ei, user: null };
+            const person = await ctx.db.get(ei.personnelId);
+            return {
+              ...ei,
+              user: sanitizePersonnelForPublic(person),
+            };
+          })
+        );
+
+        const participants = await ctx.db
+          .query("eventParticipants")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const participantsWithDetails = await Promise.all(
+          participants.map(async (participant) => {
+            const personnel = await ctx.db.get(participant.personnelId);
+            const { notes: _participantNotes, ...participantRest } = participant;
+            return {
+              ...participantRest,
+              personnel: sanitizePersonnelForPublic(personnel),
+            };
+          })
+        );
+
+        const { bookingCode: _bc, notes: _eventNotes, ...eventRest } = event;
+
+        return {
+          ...eventRest,
           eventType,
           server,
           instructors: instructorsWithDetails,
@@ -934,6 +1056,22 @@ export const listServers = query({
   },
 });
 
+/** Active or all servers for public calendar display. */
+export const listServersPublic = query({
+  args: {
+    activeOnly: v.optional(v.boolean()),
+  },
+  handler: async (ctx, args) => {
+    if (args.activeOnly) {
+      return await ctx.db
+        .query("servers")
+        .withIndex("by_active", (q) => q.eq("isActive", true))
+        .collect();
+    }
+    return await ctx.db.query("servers").collect();
+  },
+});
+
 /**
  * Get this week's schedule - all events for the current week
  */
@@ -1147,6 +1285,178 @@ export const getNextEvent = query({
       currentParticipants: nextEvent.currentParticipants,
       maxParticipants: nextEvent.maxParticipants,
       bookingCode: nextEvent.bookingCode,
+    };
+  },
+});
+
+export const getWeekSchedulePublic = query({
+  args: {},
+  handler: async (ctx) => {
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setHours(0, 0, 0, 0);
+    startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(endOfWeek.getDate() + 7);
+    endOfWeek.setHours(23, 59, 59, 999);
+
+    const weekEvents = await ctx.db
+      .query("events")
+      .withIndex("by_date", (q) =>
+        q.gte("startDate", startOfWeek.getTime()).lt("startDate", endOfWeek.getTime())
+      )
+      .filter((q) => q.eq(q.field("status"), "scheduled"))
+      .collect();
+
+    const weekSchedule = await Promise.all(
+      weekEvents.map(async (event) => {
+        const eventType = event.eventTypeId ? await ctx.db.get(event.eventTypeId) : null;
+        const server = await ctx.db.get(event.serverId);
+
+        const eventInstructors = await ctx.db
+          .query("eventInstructors")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const instructorsWithDetails = await Promise.all(
+          eventInstructors.map(async (ei) => {
+            if (!ei.personnelId) return "Unknown";
+            const person = await ctx.db.get(ei.personnelId);
+            return person?.callSign || "Unknown";
+          })
+        );
+
+        return {
+          _id: event._id,
+          title: event.title,
+          description: event.description,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          eventType: eventType?.name || "Unknown",
+          eventTypeAbbr: eventType?.abbreviation || "N/A",
+          eventTypeColor: eventType?.color || "#888888",
+          server: server?.name || "Unknown",
+          instructorName: instructorsWithDetails.join(", ") || "TBD",
+          currentParticipants: event.currentParticipants,
+          maxParticipants: event.maxParticipants,
+          status: event.status,
+        };
+      })
+    );
+
+    return weekSchedule.sort((a, b) => a.startDate - b.startDate);
+  },
+});
+
+export const getNextWeekSchedulePublic = query({
+  args: {},
+  handler: async (ctx) => {
+    const now = new Date();
+    const startOfNextWeek = new Date(now);
+    startOfNextWeek.setHours(0, 0, 0, 0);
+    startOfNextWeek.setDate(startOfNextWeek.getDate() - startOfNextWeek.getDay() + 7);
+
+    const endOfNextWeek = new Date(startOfNextWeek);
+    endOfNextWeek.setDate(endOfNextWeek.getDate() + 7);
+    endOfNextWeek.setHours(23, 59, 59, 999);
+
+    const nextWeekEvents = await ctx.db
+      .query("events")
+      .withIndex("by_date", (q) =>
+        q.gte("startDate", startOfNextWeek.getTime()).lt("startDate", endOfNextWeek.getTime())
+      )
+      .filter((q) => q.eq(q.field("status"), "scheduled"))
+      .collect();
+
+    const nextWeekSchedule = await Promise.all(
+      nextWeekEvents.map(async (event) => {
+        const eventType = event.eventTypeId ? await ctx.db.get(event.eventTypeId) : null;
+        const server = await ctx.db.get(event.serverId);
+
+        const eventInstructors = await ctx.db
+          .query("eventInstructors")
+          .withIndex("by_event", (q) => q.eq("eventId", event._id))
+          .collect();
+
+        const instructorsWithDetails = await Promise.all(
+          eventInstructors.map(async (ei) => {
+            if (!ei.personnelId) return "Unknown";
+            const person = await ctx.db.get(ei.personnelId);
+            return person?.callSign || "Unknown";
+          })
+        );
+
+        return {
+          _id: event._id,
+          title: event.title,
+          description: event.description,
+          startDate: event.startDate,
+          endDate: event.endDate,
+          eventType: eventType?.name || "Unknown",
+          eventTypeAbbr: eventType?.abbreviation || "N/A",
+          eventTypeColor: eventType?.color || "#888888",
+          server: server?.name || "Unknown",
+          instructorName: instructorsWithDetails.join(", ") || "TBD",
+          currentParticipants: event.currentParticipants,
+          maxParticipants: event.maxParticipants,
+          status: event.status,
+        };
+      })
+    );
+
+    return nextWeekSchedule.sort((a, b) => a.startDate - b.startDate);
+  },
+});
+
+export const getNextEventPublic = query({
+  args: {},
+  handler: async (ctx) => {
+    const now = Date.now();
+    const oneWeekFromNow = now + 7 * 24 * 60 * 60 * 1000;
+
+    const upcomingEvents = await ctx.db
+      .query("events")
+      .withIndex("by_date", (q) =>
+        q.gte("startDate", now).lt("startDate", oneWeekFromNow)
+      )
+      .filter((q) => q.eq(q.field("status"), "scheduled"))
+      .collect();
+
+    if (upcomingEvents.length === 0) {
+      return null;
+    }
+
+    const nextEvent = upcomingEvents.sort((a, b) => a.startDate - b.startDate)[0];
+
+    const eventType = nextEvent.eventTypeId ? await ctx.db.get(nextEvent.eventTypeId) : null;
+    const server = await ctx.db.get(nextEvent.serverId);
+
+    const eventInstructors = await ctx.db
+      .query("eventInstructors")
+      .withIndex("by_event", (q) => q.eq("eventId", nextEvent._id))
+      .collect();
+
+    const instructorsWithDetails = await Promise.all(
+      eventInstructors.map(async (ei) => {
+        if (!ei.personnelId) return "Unknown";
+        const person = await ctx.db.get(ei.personnelId);
+        return person?.callSign || "Unknown";
+      })
+    );
+
+    return {
+      _id: nextEvent._id,
+      title: nextEvent.title,
+      startDate: nextEvent.startDate,
+      endDate: nextEvent.endDate,
+      eventType: eventType?.name || "Unknown",
+      eventTypeAbbr: eventType?.abbreviation || "N/A",
+      eventTypeColor: eventType?.color || "#888888",
+      server: server?.name || "Unknown",
+      instructorName: instructorsWithDetails.join(", ") || "TBD",
+      currentParticipants: nextEvent.currentParticipants,
+      maxParticipants: nextEvent.maxParticipants,
     };
   },
 });

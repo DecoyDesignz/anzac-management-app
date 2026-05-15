@@ -10,6 +10,15 @@ export default auth((req) => {
     return NextResponse.next()
   }
 
+  const publicDashboardRoutes = new Set([
+    "/dashboard",
+    "/dashboard/calendar",
+    "/dashboard/qualifications",
+    "/dashboard/personnel",
+  ])
+
+  const isPublicDashboardRoute = publicDashboardRoutes.has(nextUrl.pathname)
+
   // Always allow access to maintenance page
   if (nextUrl.pathname === "/maintenance") {
     return NextResponse.next()
@@ -19,7 +28,9 @@ export default auth((req) => {
   const isLoggedIn = !!req.auth
   const userRole = req.auth?.user?.role
 
-  const isProtectedRoute = nextUrl.pathname.startsWith("/dashboard") || nextUrl.pathname === "/change-password"
+  const isProtectedRoute =
+    (nextUrl.pathname.startsWith("/dashboard") && !isPublicDashboardRoute) ||
+    nextUrl.pathname === "/change-password"
 
   // Redirect to login if not logged in and trying to access protected route
   if (!isLoggedIn && isProtectedRoute) {
@@ -33,6 +44,8 @@ export default auth((req) => {
     const memberAllowedRoutes = [
       "/dashboard",
       "/dashboard/calendar",
+      "/dashboard/personnel",
+      "/dashboard/qualifications",
       "/change-password",
     ]
     
