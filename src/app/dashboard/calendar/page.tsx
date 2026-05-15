@@ -655,10 +655,12 @@ export default function CalendarPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
+            {canEdit ? (
             <div>
               <p className="font-medium text-foreground mb-1">Make Booking:</p>
               <p>Enter event details and click &quot;Book Event&quot; to schedule training sessions.</p>
             </div>
+            ) : null}
             <div>
               <p className="font-medium text-foreground mb-1">Event Types:</p>
               <p>Operation, Training</p>
@@ -677,8 +679,10 @@ export default function CalendarPage() {
 
       {/* Booking Modal */}
       <FormDialog
-        open={bookingModalOpen}
-        onOpenChange={setBookingModalOpen}
+        open={canEdit && bookingModalOpen}
+        onOpenChange={(open) => {
+          if (canEdit) setBookingModalOpen(open)
+        }}
         title="Make Booking"
         description="Create a new training event or operation. Date must be in the current month or later."
         onSubmit={handleCreateEvent}
@@ -962,7 +966,7 @@ export default function CalendarPage() {
           selectedWeek={selectedMonth}
           onWeekChange={handleMonthChange}
           bookingModalOpen={bookingModalOpen}
-          onBookingModalOpenChange={setBookingModalOpen}
+          onBookingModalOpenChange={canEdit ? setBookingModalOpen : undefined}
           onEditEvent={canEdit ? handleEditModalOpen : undefined}
           onBookingWithDate={canEdit ? handleBookingWithDate : undefined}
         />

@@ -56,7 +56,13 @@ type PersonnelWithQualifications = {
   rank?: { name: string; abbreviation: string; order?: number } | null
   status: string
   joinDate?: number
-  qualifications?: Array<{ name: string; abbreviation: string }>
+  qualifications?: Array<{
+    _id: Id<"qualifications">
+    name: string
+    abbreviation: string
+    schoolId?: Id<"schools">
+    awardedDate?: number
+  }>
   roles?: Array<{ name: string; displayName: string; color: string }>
   hasSystemAccess?: boolean
   hasNotes?: boolean
@@ -808,6 +814,8 @@ export default function PersonnelPage() {
                         <PersonnelQualifications 
                           personnelId={person._id}
                           compact={false}
+                          readOnly={!canEditPersonnel}
+                          rosterQualifications={(person as PersonnelWithQualifications).qualifications ?? []}
                         />
                       </CardContent>
                     </Card>
@@ -1152,8 +1160,15 @@ export default function PersonnelPage() {
                   <PersonnelQualifications 
                     personnelId={selectedPersonnelId!} 
                     compact={true}
-                    onRemove={(qualificationId: string, qualName: string) => 
-                      handleRemoveQualification(selectedPersonnelId!, qualificationId, qualName)
+                    readOnly={!canEditPersonnel}
+                    rosterQualifications={
+                      (selectedPerson as PersonnelWithQualifications).qualifications ?? []
+                    }
+                    onRemove={
+                      canEditPersonnel
+                        ? (qualificationId: string, qualName: string) =>
+                            handleRemoveQualification(selectedPersonnelId!, qualificationId, qualName)
+                        : undefined
                     }
                   />
                 </CardContent>

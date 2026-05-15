@@ -781,13 +781,15 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBooki
           {selectedEvent && (
             <EventDetailView
               event={selectedEvent}
-              onEdit={(event) => {
-                if (onEditEvent) {
-                  onEditEvent(event);
-                  setEditModalOpen(false);
-                }
-              }}
-              onClearEvent={handleClearEvent}
+              onEdit={
+                onEditEvent
+                  ? (event) => {
+                      onEditEvent(event)
+                      setEditModalOpen(false)
+                    }
+                  : undefined
+              }
+              onClearEvent={canEdit ? handleClearEvent : undefined}
             />
           )}
         </DialogContent>
@@ -802,7 +804,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBooki
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {/* Book Event Button */}
+            {(onBookingWithDate || onBookingModalOpenChange) ? (
             <div className="flex justify-center">
               <Button 
                 onClick={() => {
@@ -818,6 +820,7 @@ export function EventCalendar({ selectedWeek = new Date(), onWeekChange, onBooki
                 Book New Event
               </Button>
             </div>
+            ) : null}
             
             {/* Existing Events */}
             {selectedDayEvents.length === 0 ? (

@@ -273,19 +273,24 @@ export const getPersonnelDetails = query({
       .withIndex("by_personnel", (q) => q.eq("personnelId", args.personnelId))
       .collect();
 
-    const qualifications = await Promise.all(
-      personnelQuals.map(async (pq) => {
-        const qualification = await ctx.db.get(pq.qualificationId);
-        const awardedByUser = pq.awardedBy ? await ctx.db.get(pq.awardedBy) : null;
-        return {
-          ...qualification,
-          awardedDate: pq.awardedDate,
-          expiryDate: pq.expiryDate,
-          awardedBy: awardedByUser,
-          notes: pq.notes,
-        };
-      })
-    );
+    const qualifications = (
+      await Promise.all(
+        personnelQuals.map(async (pq) => {
+          const qualification = await ctx.db.get(pq.qualificationId);
+          if (!qualification) {
+            return null;
+          }
+          const awardedByUser = pq.awardedBy ? await ctx.db.get(pq.awardedBy) : null;
+          return {
+            ...qualification,
+            awardedDate: pq.awardedDate,
+            expiryDate: pq.expiryDate,
+            awardedBy: awardedByUser,
+            notes: pq.notes,
+          };
+        })
+      )
+    ).filter((q): q is NonNullable<typeof q> => q !== null);
 
     // Get rank history
     const rankHistory = await ctx.db

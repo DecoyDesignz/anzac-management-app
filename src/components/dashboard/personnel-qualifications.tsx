@@ -11,41 +11,76 @@ import { getThemeAwareColor, getTextColor } from "@/lib/utils"
 import { Id } from "../../../convex/_generated/dataModel"
 import { useTheme } from "@/providers/theme-provider"
 
+type RosterQualification = {
+  _id: Id<"qualifications">
+  name: string
+  abbreviation: string
+  schoolId?: Id<"schools">
+  awardedDate?: number
+}
+
 interface PersonnelQualificationsProps {
   personnelId: string
   compact?: boolean
   onRemove?: (qualificationId: string, qualName: string) => void
+  /**
+   * When true, uses roster qualification docs + public Convex queries (no getPersonnelDetails).
+   * Use for game masters and others who can view the roster but cannot edit personnel records.
+   */
+  readOnly?: boolean
+  /** Required when readOnly — qualification rows from listPersonnelWith* (same shape as roster). */
+  rosterQualifications?: RosterQualification[] | null
 }
 
 export function PersonnelQualifications({ 
   personnelId, 
   compact = false,
-  onRemove 
+  onRemove,
+  readOnly = false,
+  rosterQualifications = null,
 }: PersonnelQualificationsProps) {
   const { data: session } = useSession()
   const [expandedSchools, setExpandedSchools] = useState<Set<string>>(new Set())
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
   
-  const personnel = useQuery(
+  const personnelFromServer = useQuery(
     api.personnel.getPersonnelDetails,
-    session?.user?.id ? {
-      userId: session.user.id as Id<"personnel">,
-      personnelId: personnelId as Id<"personnel">,
-      requesterUsername: session.user.name,
-      requesterRole: session.user.role
-    } : "skip"
+    !readOnly && session?.user?.id
+      ? {
+          userId: session.user.id as Id<"personnel">,
+          personnelId: personnelId as Id<"personnel">,
+          requesterUsername: session.user.name,
+          requesterRole: session.user.role,
+        }
+      : "skip"
   )
-  const schools = useQuery(
+  const schoolsAuth = useQuery(
     api.schools.listSchools,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
+    !readOnly && session?.user?.id ? { userId: String(session.user.id) } : "skip"
   )
-  const allQualifications = useQuery(
-    api.qualifications.listQualificationsWithCounts,
-    session?.user?.id ? { userId: session.user.id as Id<"personnel"> } : "skip"
-  )
+  const schoolsPublic = useQuery(api.schools.listSchoolsPublic, readOnly ? {} : "skip")
+  const schools = readOnly ? schoolsPublic : schoolsAuth
 
-  if (!personnel || !schools || !allQualifications) {
+  const allQualificationsAuth = useQuery(
+    api.qualifications.listQualificationsWithCounts,
+    !readOnly && session?.user?.id ? { userId: String(session.user.id) } : "skip"
+  )
+  const allQualificationsPublic = useQuery(
+    api.qualifications.listQualificationsWithCountsPublic,
+    readOnly ? {} : "skip"
+  )
+  const allQualifications = readOnly ? allQualificationsPublic : allQualificationsAuth
+
+  const personnel = readOnly
+    ? { qualifications: rosterQualifications ?? [] }
+    : personnelFromServer
+
+  const loading = readOnly
+    ? schools === undefined || allQualifications === undefined
+    : personnel === undefined || schools === undefined || allQualifications === undefined
+
+  if (loading || !personnel || !schools || !allQualifications) {
     return <div className="text-sm text-muted-foreground">Loading qualifications...</div>
   }
 
