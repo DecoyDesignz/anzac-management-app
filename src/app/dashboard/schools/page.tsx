@@ -42,6 +42,7 @@ import { useTheme } from "@/providers/theme-provider"
 import { ConfirmationDialog } from "@/components/common/confirmation-dialog"
 import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
+import { usePersonnelRoleCapabilities } from "@/hooks/use-personnel-role-capabilities"
 import { EmptyState } from "@/components/common/empty-state"
 
 export default function SchoolsPage() {
@@ -63,9 +64,9 @@ export default function SchoolsPage() {
   const [newSchoolAbbr, setNewSchoolAbbr] = useState("")
   const [newSchoolColor, setNewSchoolColor] = useState("")
 
-  // Check if user is admin
-  const isAdmin = session?.user?.role === 'administrator' || session?.user?.role === 'super_admin'
-  const isInstructor = session?.user?.role === 'instructor'
+  const { hasInstructorRole, isAdministratorRole } = usePersonnelRoleCapabilities()
+  const isAdmin = isAdministratorRole
+  const isInstructor = hasInstructorRole
 
   // Fetch data
   const schoolsWithInstructors = useQuery(

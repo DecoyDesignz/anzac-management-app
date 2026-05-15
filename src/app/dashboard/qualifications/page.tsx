@@ -32,6 +32,7 @@ import { useTheme } from "@/providers/theme-provider"
 import { FormDialog } from "@/components/common/form-dialog"
 import { LoadingState } from "@/components/common/loading-state"
 import { useDashboardAccess } from "@/lib/dashboard-access"
+import { usePersonnelRoleCapabilities } from "@/hooks/use-personnel-role-capabilities"
 
 type QualificationWithSchool = {
   _id: string
@@ -70,6 +71,8 @@ export default function QualificationsPage() {
   const { toast } = useToast()
   const { data: session } = useSession()
   const { canEdit, isLoading: sessionLoading } = useDashboardAccess()
+  const { hasInstructorRole, hasQualificationsStaffCapability } =
+    usePersonnelRoleCapabilities()
   const { theme } = useTheme()
   const isDarkMode = theme === 'dark'
   const [searchTerm, setSearchTerm] = useState("")
@@ -112,8 +115,8 @@ export default function QualificationsPage() {
   const [isAwarding, setIsAwarding] = useState(false)
   const [awardFormError, setAwardFormError] = useState<string | null>(null)
   
-  const canManageQualifications = canEdit && session?.user?.role !== "game_master"
-  const isInstructor = session?.user?.role === "instructor"
+  const canManageQualifications = canEdit && hasQualificationsStaffCapability
+  const isInstructor = hasInstructorRole
 
   const qualificationsAuth = useQuery(
     api.qualifications.listQualificationsWithCounts,

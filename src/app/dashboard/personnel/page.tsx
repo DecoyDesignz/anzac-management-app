@@ -44,6 +44,7 @@ import { getUserFriendlyError, getThemeAwareColor, getTextColor } from "@/lib/ut
 import { useTheme } from "@/providers/theme-provider"
 import { generateTemporaryPassword } from "../../../../convex/helpers"
 import { useDashboardAccess } from "@/lib/dashboard-access"
+import { usePersonnelRoleCapabilities } from "@/hooks/use-personnel-role-capabilities"
 
 type PersonnelFormMode = "add" | "edit" | null
 
@@ -124,14 +125,20 @@ export default function PersonnelPage() {
   const [sortBy, setSortBy] = useState("rank")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc")
 
-  // Check user permissions
-  const canPromote = session?.user?.role === 'administrator' || session?.user?.role === 'super_admin'
-  const canEditPersonnel = canEdit && session?.user?.role !== 'game_master'
-  const isInstructor = session?.user?.role === 'instructor'
-  const isStaff = session?.user?.role === 'super_admin' || 
-                  session?.user?.role === 'administrator' || 
-                  session?.user?.role === 'instructor' || 
-                  session?.user?.role === 'game_master'
+  // Check user permissions (Convex userRoles — JWT role alone breaks multi-role users)
+  const {
+    hasInstructorRole,
+    hasGameMasterRole,
+    isAdministratorRole,
+    isPureGameMaster,
+  } = usePersonnelRoleCapabilities()
+  const canPromote = isAdministratorRole
+  const canEditPersonnel = canEdit && !isPureGameMaster
+  const isInstructor = hasInstructorRole
+  const isStaff =
+    isAdministratorRole ||
+    hasInstructorRole ||
+    hasGameMasterRole
 
   const personnelAuth = useQuery(
     api.personnel.listPersonnelWithQualifications,
