@@ -1476,7 +1476,7 @@ export default function PersonnelPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               Personnel Details
-              {(selectedPerson as PersonnelWithQualifications).archived ? (
+              {(selectedPerson as PersonnelWithQualifications | null)?.archived ? (
                 <Badge variant="outline" className="font-normal text-muted-foreground">
                   Archived
                 </Badge>
@@ -1720,7 +1720,8 @@ export default function PersonnelPage() {
                 </Card>
               )}
 
-              {canViewArchivedSection && (selectedPerson as PersonnelWithQualifications).archived ? (
+              {canViewArchivedSection &&
+              (selectedPerson as PersonnelWithQualifications | null)?.archived ? (
                 <Card className="border-primary/30 bg-primary/5">
                   <CardContent className="flex flex-wrap gap-4 items-center justify-between py-4">
                     <div>
