@@ -31,6 +31,49 @@ function createAuthError(
   });
 }
 
+type AppErrorPayload = {
+  code: string;
+  message: string;
+};
+
+/**
+ * Application error visible to clients in production (unlike plain Error).
+ * Do not use AUTH_ codes here — those trigger forced logout in the UI.
+ */
+export function createAppError(code: string, message: string): ConvexError<AppErrorPayload> {
+  return new ConvexError({ code, message });
+}
+
+/**
+ * Re-throw as an application error so production clients get a clear message.
+ */
+export function toAppError(error: unknown, fallbackCode: string, fallbackMessage: string): ConvexError<AppErrorPayload> {
+  if (error instanceof ConvexError) {
+    const data = error.data as { message?: unknown; code?: unknown } | string | null;
+    if (data && typeof data === "object" && typeof data.message === "string") {
+      return createAppError(
+        typeof data.code === "string" ? data.code : fallbackCode,
+        data.message
+      );
+    }
+    if (typeof data === "string" && data.length > 0) {
+      return createAppError(fallbackCode, data);
+    }
+  }
+
+  if (error instanceof Error) {
+    const cleaned = error.message
+      .replace(/^(Uncaught Error:\s*)+/g, "")
+      .split("\n")[0]
+      ?.trim();
+    if (cleaned && !cleaned.startsWith("[CONVEX")) {
+      return createAppError(fallbackCode, cleaned);
+    }
+  }
+
+  return createAppError(fallbackCode, fallbackMessage);
+}
+
 /**
  * Get a personnel member by their ID
  */

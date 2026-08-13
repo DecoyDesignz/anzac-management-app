@@ -51,6 +51,7 @@ import { CSS } from '@dnd-kit/utilities'
 import { Star, GraduationCap, School, Shield, Users2, Copy, Check, Eye, EyeOff, Pencil, Trash2, GripVertical, KeyRound, Wrench, Calendar } from "lucide-react"
 import { formatRole, generateTemporaryPassword } from "../../../../convex/helpers"
 import { getRoleColorStyles } from "@/lib/utils"
+import { getConvexErrorMessage } from "@/lib/convex-errors"
 import { useTheme } from "@/providers/theme-provider"
 
 // Sortable Rank Item Component
@@ -661,6 +662,11 @@ export default function SystemManagementPage() {
     e.preventDefault()
     setError(null)
     
+    if (userFormMode === "new" && !userForm.name.trim()) {
+      setError("Please enter a CallSign")
+      return
+    }
+
     if (userForm.roles.length === 0) {
       setError("Please select at least one role")
       return
@@ -694,9 +700,9 @@ export default function SystemManagementPage() {
         // Create new user account
         await createUserAccount({
           requesterUserId: session.user.id as Id<"personnel">,
-          name: userForm.name,
+          name: userForm.name.trim(),
           password: userForm.password,
-          roles: userForm.roles as Array<"administrator" | "game_master" | "instructor">,
+          roles: userForm.roles as Array<"administrator" | "game_master" | "instructor" | "member" | "super_admin">,
         })
       }
       
@@ -708,7 +714,7 @@ export default function SystemManagementPage() {
       setShowPassword(false)
       setAddUserOpen(false)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create user")
+      setError(getConvexErrorMessage(err, "Failed to create user"))
     } finally {
       setIsSubmitting(false)
     }

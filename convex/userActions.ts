@@ -1,11 +1,11 @@
 "use node";
 
 import { action } from "./_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 import { Id, Doc } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 import { scrypt, randomBytes } from "crypto";
-import { validatePassword, generateTemporaryPassword } from "./helpers";
+import { validatePassword, generateTemporaryPassword, createAppError, toAppError } from "./helpers";
 
 /**
  * Generate a cryptographically secure random salt for password hashing
@@ -268,64 +268,95 @@ export const createUserAccount = action({
     )),
   },
   handler: async (ctx, args): Promise<{ success: boolean; userId: Id<"personnel"> }> => {
-    // Check if requester is an administrator or super_admin
-    const requester = await ctx.runQuery(api.users.getUser, {
-      requesterUserId: args.requesterUserId,
-      userId: args.requesterUserId
-    });
-    
-    if (!requester) {
-      throw new Error("Requester not found");
-    }
-    
-    // Get requester's roles
-    const requesterRoles = await ctx.runQuery(api.users.getUserRoles, {
-      requesterUserId: args.requesterUserId,
-      userId: args.requesterUserId
-    });
-    
-    const roleNames = requesterRoles.map(role => role.roleName).filter(Boolean);
-    const isAdmin = roleNames.includes("administrator") || roleNames.includes("super_admin");
-    
-    if (!isAdmin) {
-      throw new Error("Access denied: Only administrators and super admins can create login accounts");
-    }
-    
-    // Note: Administrators cannot create super_admins (enforced by UI, but we check here too)
-    if (args.roles.includes("super_admin") && !roleNames.includes("super_admin")) {
-      throw new Error("Access denied: Only super admins can create super admin accounts");
-    }
-    
-    // Validate password
-    const validation = validatePassword(args.password);
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "));
-    }
+    try {
+      const callSign = args.name.trim();
+      if (!callSign) {
+        throw createAppError("INVALID_CALLSIGN", "CallSign is required");
+      }
 
-    // Check if callSign already exists
-    const existingPerson = await ctx.runQuery(internal.users.getUserByUsernameInternal, {
-      username: args.name,
-    });
+      // Check if requester is an administrator or super_admin
+      const requester = await ctx.runQuery(api.users.getUser, {
+        requesterUserId: args.requesterUserId,
+        userId: args.requesterUserId
+      });
+      
+      if (!requester) {
+        throw createAppError("REQUESTER_NOT_FOUND", "Requester not found");
+      }
+      
+      // Get requester's roles
+      const requesterRoles = await ctx.runQuery(api.users.getUserRoles, {
+        requesterUserId: args.requesterUserId,
+        userId: args.requesterUserId
+      });
+      
+      const roleNames = requesterRoles.map(role => role.roleName).filter(Boolean);
+      const isAdmin = roleNames.includes("administrator") || roleNames.includes("super_admin");
+      
+      if (!isAdmin) {
+        throw createAppError(
+          "ACCESS_DENIED",
+          "Access denied: Only administrators and super admins can create login accounts"
+        );
+      }
+      
+      // Note: Administrators cannot create super_admins (enforced by UI, but we check here too)
+      if (args.roles.includes("super_admin") && !roleNames.includes("super_admin")) {
+        throw createAppError(
+          "ACCESS_DENIED",
+          "Access denied: Only super admins can create super admin accounts"
+        );
+      }
 
-    if (existingPerson) {
-      throw new Error("CallSign already exists");
+      if (args.roles.length === 0) {
+        throw createAppError("ROLES_REQUIRED", "Please select at least one role");
+      }
+      
+      // Validate password
+      const validation = validatePassword(args.password);
+      if (!validation.isValid) {
+        throw createAppError("INVALID_PASSWORD", validation.errors.join(", "));
+      }
+
+      // Check if callSign already exists
+      const existingPerson = await ctx.runQuery(internal.users.getUserByUsernameInternal, {
+        username: callSign,
+      });
+
+      if (existingPerson) {
+        if (existingPerson.passwordHash) {
+          throw createAppError(
+            "CALLSIGN_EXISTS",
+            "A login account with this CallSign already exists."
+          );
+        }
+        throw createAppError(
+          "PERSONNEL_EXISTS_NO_ACCESS",
+          "This CallSign already belongs to personnel without a login. Switch to \"Existing Personnel\" mode to grant system access."
+        );
+      }
+
+      // Generate a unique salt for this user
+      const salt = generateSecureSalt();
+      
+      // Hash password with the generated salt
+      const passwordHash = await hashPassword(args.password, salt);
+
+      // Create the personnel with system access
+      const result: { success: boolean; userId: Id<"personnel"> } = await ctx.runMutation(internal.users.createUserAccountInternal, {
+        name: callSign,
+        passwordHash,
+        passwordSalt: salt,
+        roles: args.roles,
+      });
+
+      return result;
+    } catch (error) {
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+      throw toAppError(error, "CREATE_USER_FAILED", "Failed to create user account");
     }
-
-    // Generate a unique salt for this user
-    const salt = generateSecureSalt();
-    
-    // Hash password with the generated salt
-    const passwordHash = await hashPassword(args.password, salt);
-
-    // Create the personnel with system access
-    const result: { success: boolean; userId: Id<"personnel"> } = await ctx.runMutation(internal.users.createUserAccountInternal, {
-      name: args.name,
-      passwordHash,
-      passwordSalt: salt,
-      roles: args.roles,
-    });
-
-    return result;
   },
 });
 
@@ -429,96 +460,122 @@ export const grantSystemAccess = action({
     )),
   },
   handler: async (ctx, args): Promise<{ success: boolean; userId: Id<"personnel">; temporaryPassword: string }> => {
-    // Check if requester is an administrator or super_admin
-    const requester = await ctx.runQuery(api.users.getUser, {
-      requesterUserId: args.requesterUserId,
-      userId: args.requesterUserId
-    });
-    
-    if (!requester) {
-      throw new Error("Requester not found");
-    }
-    
-    // Get requester's roles
-    const requesterRoles = await ctx.runQuery(api.users.getUserRoles, {
-      requesterUserId: args.requesterUserId,
-      userId: args.requesterUserId
-    });
-    
-    const roleNames = requesterRoles.map(role => role.roleName).filter(Boolean);
-    const isAdmin = roleNames.includes("administrator") || roleNames.includes("super_admin");
-    
-    if (!isAdmin) {
-      throw new Error("Access denied: Only administrators and super admins can grant system access");
-    }
-    
-    // Check if personnel exists and already has system access
-    const existingPerson = await ctx.runQuery(api.users.getUser, {
-      requesterUserId: args.requesterUserId,
-      userId: args.personnelId
-    });
-    
-    if (!existingPerson) {
-      throw new Error("Personnel not found");
-    }
-
-    if (existingPerson.archived === true) {
-      throw new Error("Un-archive this personnel before granting system access.");
-    }
-    
-    // Check if personnel already has system access by checking if they have user roles
-    // (having roles means they have system access)
-    const existingRoles = await ctx.runQuery(api.users.getUserRoles, {
-      requesterUserId: args.requesterUserId,
-      userId: args.personnelId
-    });
-    
-    if (existingRoles && existingRoles.length > 0) {
-      throw new Error("This personnel member already has system access");
-    }
-    
-    // Also check isActive as an additional indicator
-    if (existingPerson.isActive === true) {
-      // Double-check by trying to get them from the users list
-      const allUsers = await ctx.runQuery(api.users.listUsersWithRoles, {
+    try {
+      // Check if requester is an administrator or super_admin
+      const requester = await ctx.runQuery(api.users.getUser, {
+        requesterUserId: args.requesterUserId,
         userId: args.requesterUserId
       });
-      const hasAccess = allUsers?.some(u => u._id === args.personnelId);
-      if (hasAccess) {
-        throw new Error("This personnel member already has system access");
+      
+      if (!requester) {
+        throw createAppError("REQUESTER_NOT_FOUND", "Requester not found");
       }
-    }
-    
-    // Note: Administrators cannot grant super_admin role
-    if (args.roles.includes("super_admin") && !roleNames.includes("super_admin")) {
-      throw new Error("Access denied: Only super admins can grant super admin role");
-    }
-    
-    // Validate password
-    const validation = validatePassword(args.password);
-    if (!validation.isValid) {
-      throw new Error(validation.errors.join(", "));
-    }
+      
+      // Get requester's roles
+      const requesterRoles = await ctx.runQuery(api.users.getUserRoles, {
+        requesterUserId: args.requesterUserId,
+        userId: args.requesterUserId
+      });
+      
+      const roleNames = requesterRoles.map(role => role.roleName).filter(Boolean);
+      const isAdmin = roleNames.includes("administrator") || roleNames.includes("super_admin");
+      
+      if (!isAdmin) {
+        throw createAppError(
+          "ACCESS_DENIED",
+          "Access denied: Only administrators and super admins can grant system access"
+        );
+      }
+      
+      // Check if personnel exists and already has system access
+      const existingPerson = await ctx.runQuery(api.users.getUser, {
+        requesterUserId: args.requesterUserId,
+        userId: args.personnelId
+      });
+      
+      if (!existingPerson) {
+        throw createAppError("PERSONNEL_NOT_FOUND", "Personnel not found");
+      }
 
-    // Generate a unique salt for this user
-    const salt = generateSecureSalt();
-    
-    // Hash password with the generated salt
-    const passwordHash = await hashPassword(args.password, salt);
+      if (existingPerson.archived === true) {
+        throw createAppError(
+          "PERSONNEL_ARCHIVED",
+          "Un-archive this personnel before granting system access."
+        );
+      }
+      
+      // Check if personnel already has system access by checking if they have user roles
+      // (having roles means they have system access)
+      const existingRoles = await ctx.runQuery(api.users.getUserRoles, {
+        requesterUserId: args.requesterUserId,
+        userId: args.personnelId
+      });
+      
+      if (existingRoles && existingRoles.length > 0) {
+        throw createAppError(
+          "ALREADY_HAS_ACCESS",
+          "This personnel member already has system access"
+        );
+      }
+      
+      // Also check isActive as an additional indicator
+      if (existingPerson.isActive === true) {
+        // Double-check by trying to get them from the users list
+        const allUsers = await ctx.runQuery(api.users.listUsersWithRoles, {
+          userId: args.requesterUserId
+        });
+        const hasAccess = allUsers?.some(u => u._id === args.personnelId);
+        if (hasAccess) {
+          throw createAppError(
+            "ALREADY_HAS_ACCESS",
+            "This personnel member already has system access"
+          );
+        }
+      }
+      
+      // Note: Administrators cannot grant super_admin role
+      if (args.roles.includes("super_admin") && !roleNames.includes("super_admin")) {
+        throw createAppError(
+          "ACCESS_DENIED",
+          "Access denied: Only super admins can grant super admin role"
+        );
+      }
 
-    // Grant system access to existing personnel
-    await ctx.runMutation(internal.users.grantSystemAccessInternal, {
-      personnelId: args.personnelId,
-      passwordHash,
-      passwordSalt: salt,
-      roles: args.roles,
-    });
+      if (args.roles.length === 0) {
+        throw createAppError("ROLES_REQUIRED", "Please select at least one role");
+      }
+      
+      // Validate password
+      const validation = validatePassword(args.password);
+      if (!validation.isValid) {
+        throw createAppError("INVALID_PASSWORD", validation.errors.join(", "));
+      }
 
-    return {
-      success: true,
-      userId: args.personnelId,
-      temporaryPassword: args.password,
-    };
+      // Generate a unique salt for this user
+      const salt = generateSecureSalt();
+      
+      // Hash password with the generated salt
+      const passwordHash = await hashPassword(args.password, salt);
+
+      // Grant system access to existing personnel
+      await ctx.runMutation(internal.users.grantSystemAccessInternal, {
+        personnelId: args.personnelId,
+        passwordHash,
+        passwordSalt: salt,
+        roles: args.roles,
+      });
+
+      return {
+        success: true,
+        userId: args.personnelId,
+        temporaryPassword: args.password,
+      };
+    } catch (error) {
+      if (error instanceof ConvexError) {
+        throw error;
+      }
+      throw toAppError(error, "GRANT_ACCESS_FAILED", "Failed to grant system access");
+    }
   },
 });
 
